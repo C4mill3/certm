@@ -1,0 +1,20 @@
+@config "./tailwind.config.js";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+.group:focus .group-focus\:flex {
+    display: flex;
+}
+
+@layer utilities {
+    .bg-customblue {
+        background-color: #14213F;
+    }
+    .text-custom {
+        color: #ffffff;
+    }
+}
