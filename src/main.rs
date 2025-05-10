@@ -1,15 +1,9 @@
-use std::path::Path;
-
 mod tools;
 
 
 fn main(){
-    let args = [".gitignore"];
-    println!("{}", tools::utility::run_command("/bin/cat", &args));
-    println!("-------");
-    let dir  = Path::new("datas");
-    println!("{:?}", tools::utility::list_in_path(dir, tools::utility::FSItemType::All));
-    println!("{:?}", tools::utility::list_in_path(dir, tools::utility::FSItemType::Files));
-    println!("{:?}", tools::utility::list_in_path(dir, tools::utility::FSItemType::Directory));
+    tools::certs_manager::generate_new_ca(4096, "aa", "ESIEA", "FR", "Paris", "jsp");
+    let a = tools::certs_manager::list_ca();
+    println!("res: {:?}", a);
     return;
 } 

@@ -4,7 +4,7 @@ mod utility{
     use std::{io, fs, path::Path};
 
     pub enum FSItemType {
-    All,
+        All,
         Files,
         Directory
     }
@@ -16,7 +16,7 @@ mod utility{
         }
         let output = construct_command
             .output()
-            .expect("failed blablabla");
+            .expect("failed");
     
         let stdout = str::from_utf8(&output.stdout).expect("Invalid UTF-8 sequence");
     
@@ -77,7 +77,7 @@ pub mod certs_manager{
     
     // Import
     use std::{io, fs, path::Path};
-    use super::utility;
+    use super::utility::{self, FSItemType};
     use std::io::Write;
 
     // Var
@@ -85,19 +85,20 @@ pub mod certs_manager{
 
     // func
 
-    fn generate_new_ca(common_name : &str, country : &str, state : &str, locality : &str) -> io::Result<bool> {
+    pub fn generate_new_ca(key_size : u32, common_name : &str, organization : &str, country : &str, state : &str, locality : &str) -> io::Result<bool> {
         
         let main_folder = &Path::new(CAS_ROOT).join(common_name);
 
         if utility::path_exist(main_folder)? {
             return Ok(false);
         }
+        
+        // Init File Structure
 
-        fs::create_dir( main_folder);
-
-        fs::create_dir(&Path::new(main_folder).join("certs"));
-        fs::create_dir(&Path::new(main_folder).join("crl"));
-        fs::create_dir(&Path::new(main_folder).join("private"));
+        fs::create_dir(main_folder)?;
+        fs::create_dir(&main_folder.join("certs"))?;
+        fs::create_dir(&main_folder.join("crl"))?;
+        fs::create_dir(&main_folder.join("private"))?;
         let index_path = main_folder.join("index.txt");
         fs::File::create(&index_path)?; 
 
@@ -106,18 +107,43 @@ pub mod certs_manager{
         serial_file.write_all(b"1000")?;
 
         // Command
-        let command = "openssl";
+        let openssl_command = "openssl";
 
         let key_path = main_folder.join("private").join("ca.key");
-        let key_str = key_path.to_str().expect("Invalid key path");
+        let key_path_str = key_path.to_str().expect("Invalid key path");
         
-        let args = ["genpkey", "-algorithm", "RSA", "-out", key_str, "-pkeyopt", "rsa_keygen_bits:4096"];
+        if key_size != 2048 && key_size != 4096 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "key_size must be either 2048 or 4096",
+            ));
+        }
         
-        let _output = utility::run_command(command, &args);
 
+        // Generate private CA key
+        let keygen_option = format!("rsa_keygen_bits:{}", key_size);
+        let args = [ "genpkey", "-algorithm", "RSA", "-out", key_path_str, "-pkeyopt", &keygen_option ];
+        
+        utility::run_command(openssl_command, &args);
+
+        // autosigning CA (generate public CA)
+        let ca_cert_path = main_folder.join("certs").join("ca.crt");
+        let ca_cert_str = ca_cert_path.to_str().expect("Invalid CA certificate path");
+        let subj_str = format!("/C={}/ST={}/L={}/O={}/CN={}",
+                               country, state, locality, organization, common_name);
+        let args = [ "req", "-key", key_path_str, "-new", "-x509",
+                                         "-out", ca_cert_str, "-days", "3650", "-subj", &subj_str];
+        
+        utility::run_command(openssl_command, &args);
 
         return Ok(true);
     }
 
+
+    pub fn list_ca() -> io::Result<Vec<String>> {
+        let root_folder = &Path::new(CAS_ROOT);
+
+        return utility::list_in_path( root_folder, FSItemType::Directory);
+    }
     
 }
