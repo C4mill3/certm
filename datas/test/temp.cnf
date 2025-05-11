@@ -1,0 +1,25 @@
+[ x509_ext ]
+# Use a hashed subject key identifier.
+subjectKeyIdentifier = hash
+
+# Include issuer info.
+authorityKeyIdentifier = keyid,issuer
+
+# This certificate is not a CA.
+basicConstraints = critical, CA:FALSE
+
+# Specify which usages are allowed.
+keyUsage = critical, digitalSignature, keyEncipherment
+
+# Specify extended usages.
+extendedKeyUsage = serverAuth, clientAuth
+
+# Specify Subject Alternative Names.
+subjectAltName = @alt_names
+
+[ alt_names ]
+## CONF EXEMPLE
+#DNS.1 = example.com # the only one important, other are optional
+#DNS.2 = www.example.com
+# IP.1 = 192.168.1.1
+DNS.1 = test.com

@@ -49,9 +49,5 @@ authorityKeyIdentifier = keyid:always
 
 [ req_distinguished_name ]
 countryName                     = C
-stateOrProvinceName             = ST
-localityName                    = L
 0.organizationName              = O
-organizationalUnitName          = ON
 commonName                      = CN
-emailAddress                    = E 

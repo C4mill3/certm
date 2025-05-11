@@ -76,7 +76,7 @@ mod utility{
 pub mod certs_manager{
     
     // Import
-    use std::{io, fs, path::Path};
+    use std::{fs, io, path::Path};
     use super::utility::{self, FSItemType};
     use std::io::Write;
 
@@ -85,8 +85,15 @@ pub mod certs_manager{
 
     // func
 
-    pub fn generate_new_ca(key_size : u32, common_name : &str, organization : &str, country : &str, state : &str, locality : &str) -> io::Result<bool> {
+    pub fn generate_new_ca(key_size : u32, common_name : &str, organization : &str, country : &str) -> io::Result<bool> {
         
+        if key_size != 2048 && key_size != 4096 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "key_size must be either 2048 or 4096",
+            ));
+        }
+
         let main_folder = &Path::new(CAS_ROOT).join(common_name);
 
         if utility::path_exist(main_folder)? {
@@ -97,8 +104,9 @@ pub mod certs_manager{
 
         fs::create_dir(main_folder)?;
         fs::create_dir(&main_folder.join("certs"))?;
-        fs::create_dir(&main_folder.join("crl"))?;
+        fs::create_dir(&main_folder.join("csr"))?;
         fs::create_dir(&main_folder.join("private"))?;
+        fs::create_dir(&main_folder.join("ca"))?;
         let index_path = main_folder.join("index.txt");
         fs::File::create(&index_path)?; 
 
@@ -108,29 +116,20 @@ pub mod certs_manager{
 
         // Command
         let openssl_command = "openssl";
-
-        let key_path = main_folder.join("private").join("ca.key");
-        let key_path_str = key_path.to_str().expect("Invalid key path");
         
-        if key_size != 2048 && key_size != 4096 {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "key_size must be either 2048 or 4096",
-            ));
-        }
-        
-
         // Generate private CA key
+        let key_path = main_folder.join("ca").join("ca.key");
+        let key_path_str = key_path.to_str().expect("Invalid key path");
         let keygen_option = format!("rsa_keygen_bits:{}", key_size);
         let args = [ "genpkey", "-algorithm", "RSA", "-out", key_path_str, "-pkeyopt", &keygen_option ];
         
         utility::run_command(openssl_command, &args);
 
         // autosigning CA (generate public CA)
-        let ca_cert_path = main_folder.join("certs").join("ca.crt");
+        let ca_cert_path = main_folder.join("ca").join("ca.crt");
         let ca_cert_str = ca_cert_path.to_str().expect("Invalid CA certificate path");
-        let subj_str = format!("/C={}/ST={}/L={}/O={}/CN={}",
-                               country, state, locality, organization, common_name);
+        let subj_str = format!("/C={}/O={}/CN={}",
+                               country, organization, common_name);
         let args = [ "req", "-key", key_path_str, "-new", "-x509",
                                          "-out", ca_cert_str, "-days", "3650", "-subj", &subj_str];
         
@@ -145,5 +144,80 @@ pub mod certs_manager{
 
         return utility::list_in_path( root_folder, FSItemType::Directory);
     }
-    
+
+
+    pub fn generate_new_cert(ca_name: &str, key_size: i32, common_name: &str, organization : &str, country : &str) -> std::io::Result<bool> {
+
+        // Locate the CA folder in CAS_ROOT (datas/ca_common_name)
+        let ca_folder = Path::new(CAS_ROOT).join(ca_name);
+        if !ca_folder.exists() {
+            return Err(io::Error::new(io::ErrorKind::NotFound, "CA folder not found"));
+        }
+
+        if key_size != 2048 && key_size != 4096 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "key_size must be either 2048 or 4096",
+            ));
+        }
+
+        // Define paths for the CA certificate and key
+        let ca_cert_path = ca_folder.join("ca").join("ca.crt");
+        let ca_cert_path_str = ca_cert_path.to_str().expect("Invalid cert path");
+        let ca_key_path = ca_folder.join("ca").join("ca.key");
+        let ca_key_path_str = ca_key_path.to_str().expect("Invalid key path");
+
+        if !ca_cert_path.exists() || !ca_key_path.exists() {
+            return Err(io::Error::new(io::ErrorKind::NotFound, "CA certificate or key not found"));
+        }
+
+        // Define paths for the new server key, CSR, and certificate
+        let cert_key_path = ca_folder.join("private").join(format!("{}.key", common_name));
+        let cert_key_path_str = cert_key_path.to_str().expect("Invalid key path");
+        let cert_csr_path = ca_folder.join("csr").join(format!("{}.csr", common_name));
+        let cert_csr_path_str = cert_csr_path.to_str().expect("Invalid csr path");
+        let cert_pub_path = ca_folder.join("certs").join(format!("{}.crt", common_name));
+        let cert_pub_path_str = cert_pub_path.to_str().expect("Invalid cert path");
+
+        if cert_key_path.exists() {
+            return Ok(false);
+        }
+
+
+        // Command
+        let openssl_command = "openssl";
+
+        // Cert private key
+
+        let keygen_option = format!("rsa_keygen_bits:{}", key_size);
+        let args = [ "genpkey", "-algorithm", "RSA", "-out",cert_key_path_str,
+                                        "-pkeyopt", &keygen_option];
+        utility::run_command(openssl_command, &args);
+
+        // Cert csr
+        let subj = format!( "/C={}/O={}/CN={}", country, organization, common_name);
+        let args = [ "req", "-new", "-key", cert_key_path_str, "-out", cert_csr_path_str, "-subj", &subj ];
+        utility::run_command(openssl_command, &args);
+
+        
+        // Create an extension file with the subjectAltName for the server certificate
+        let conf_file_path = ca_folder.join("temp.cnf");
+        let conf_file_path_str = conf_file_path.to_str().expect("invalid config file path");
+
+        fs::copy("config/default_x509.cnf", conf_file_path_str)?;
+        
+        let toadd = format!("\nDNS.1 = {}\n", common_name);
+        // TODO modulable
+        let mut file = fs::OpenOptions::new().append(true).open(&conf_file_path)?;
+        file.write_all(toadd.as_bytes())?;
+        
+        // Sign the server certificate with the CA certificate and key
+        let args = [ "x509", "-req", "-in", cert_csr_path_str, "-CA", ca_cert_path_str, "-CAkey", ca_key_path_str,
+                                         "-out", cert_pub_path_str, "-days", "365", "-extfile", conf_file_path_str,];
+        utility::run_command(openssl_command, &args);
+        
+        //// let _ = fs::remove_file(conf_file_path);
+
+        Ok(true)
+    }
 }
