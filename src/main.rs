@@ -8,5 +8,8 @@ fn main(){
     println!("res: {:?}", a);
     let c = tools::certs_manager::generate_new_cert("test", 4096, "test.com", "ESIEA", "FR");
     println!("ress : {:?}", c);
+    let d = tools::certs_manager::list_cert("test");
+    println!("ress : {:?}", d);
+
     return;
 } 

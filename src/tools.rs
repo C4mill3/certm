@@ -145,10 +145,30 @@ pub mod certs_manager{
         return utility::list_in_path( root_folder, FSItemType::Directory);
     }
 
+    pub fn list_cert(ca_name: &str) -> io::Result<Vec<String>> {
+        let root_folder = &Path::new(CAS_ROOT);
+        let ca_folder = root_folder.join(ca_name).join("certs");
+        if !ca_folder.exists(){
+            return Err(io::Error::new(io::ErrorKind::NotFound, "CA folder not found"));
+        }
+
+        let list = utility::list_in_path( &ca_folder, FSItemType::Files)?;
+        
+        let mut certs_names = Vec::new();
+        for filename in list{
+            let name = if let Some(pos) = filename.rfind('.') {
+                filename[..pos].to_string()
+            }else{
+                filename
+            };
+            certs_names.push(name);
+        }
+        return Ok(certs_names);
+
+    }
 
     pub fn generate_new_cert(ca_name: &str, key_size: i32, common_name: &str, organization : &str, country : &str) -> std::io::Result<bool> {
 
-        // Locate the CA folder in CAS_ROOT (datas/ca_common_name)
         let ca_folder = Path::new(CAS_ROOT).join(ca_name);
         if !ca_folder.exists() {
             return Err(io::Error::new(io::ErrorKind::NotFound, "CA folder not found"));
@@ -178,8 +198,7 @@ pub mod certs_manager{
         let cert_csr_path_str = cert_csr_path.to_str().expect("Invalid csr path");
         let cert_pub_path = ca_folder.join("certs").join(format!("{}.crt", common_name));
         let cert_pub_path_str = cert_pub_path.to_str().expect("Invalid cert path");
-
-        if cert_key_path.exists() {
+        if cert_pub_path.exists() {
             return Ok(false);
         }
 
@@ -207,7 +226,7 @@ pub mod certs_manager{
         fs::copy("config/default_x509.cnf", conf_file_path_str)?;
         
         let toadd = format!("\nDNS.1 = {}\n", common_name);
-        // TODO modulable
+        // TODO modulable DNS.2, IP, ETC
         let mut file = fs::OpenOptions::new().append(true).open(&conf_file_path)?;
         file.write_all(toadd.as_bytes())?;
         
@@ -216,8 +235,22 @@ pub mod certs_manager{
                                          "-out", cert_pub_path_str, "-days", "365", "-extfile", conf_file_path_str,];
         utility::run_command(openssl_command, &args);
         
-        //// let _ = fs::remove_file(conf_file_path);
+        let _ = fs::remove_file(conf_file_path);
 
         Ok(true)
     }
+
+    pub fn rm_ca(ca_name: &str) -> std::io::Result<bool> {
+        
+        let ca_folder = Path::new(CAS_ROOT).join(ca_name);
+        if !ca_folder.exists() {
+            return Err(io::Error::new(io::ErrorKind::NotFound, "CA folder not found"));
+        }
+
+        let _ = fs::remove_file(ca_folder);
+
+
+        Ok(true)
+    }
+
 }
