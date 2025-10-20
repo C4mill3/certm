@@ -1,7 +1,11 @@
 mod utility{
     use std::process::Command;
     use std::str;
-    use std::{io, fs, path::Path};
+    use std::{io, path::Path, path::PathBuf};
+    use std::fs::{self, set_permissions, Permissions, File};
+    use std::os::unix::fs::PermissionsExt; // For Unix only
+    use std::io::Write;
+    use shellexpand;
 
     pub enum FSItemType {
         All,
@@ -66,6 +70,38 @@ mod utility{
         }else {
             return Ok(false);
         }
+    }
+
+    pub fn sanitize_name(filename: &str) -> String {
+        // Remove any characters that are not alphanumeric or _ -
+        let safe_name: String = filename
+            .chars()
+            .filter(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '-')
+            .collect();
+
+        // Ensure the name is not empty
+        if safe_name.is_empty() {
+            String::from("empty_name") // Or handle this case differently
+        } else {
+            safe_name
+        }
+    }
+
+    pub fn resolve_path(path: &str) -> PathBuf {
+        let resolved_path = shellexpand::tilde(path).to_string();
+        PathBuf::from(resolved_path)
+    }
+
+    pub fn write_to_file(filepath: &Path, data: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
+        // Open or create the file with specified options
+        let mut file = File::create(&filepath)?;
+        file.write_all(data)?;
+
+        // Set file permissions to 600 
+        let permissions = Permissions::from_mode(0o600); // (rw- --- ---)
+        set_permissions(&filepath, permissions)?;
+
+        Ok(())
     }
     
 
@@ -356,4 +392,98 @@ pub mod front {
             }
         }
     }
+}
+
+pub mod crypt {
+    use aes::Aes256;
+    use bincode::config::BigEndian;
+    use block_modes::{BlockMode, Cbc};
+    use block_modes::block_padding::Pkcs7;
+    use rand::{thread_rng, Rng};
+    use sha2::{Sha256, Digest};
+    use bincode::{self, config::Configuration};
+    
+    use super::utility::{sanitize_name, resolve_path, write_to_file};
+
+    type Aes256Cbc = Cbc<Aes256, Pkcs7>;
+
+    const BINCODE_CONFIG: Configuration<BigEndian> = bincode::config::standard()
+        .with_big_endian()
+        .with_variable_int_encoding();
+
+    const CA_VAULT : &'static str = "~/.ca_vault/";
+
+
+    #[derive(Debug)] // TODO Needed for printing the struct (for demonstration only)
+    #[derive(bincode::Encode, bincode::Decode)] //Automatically implement Encode and Decode traits
+    pub struct MyData {
+        name: String,
+        age: u8,
+    }
+
+    pub fn encrypt_to_file (name : &str, password: &str, data : &MyData) -> Result<(), Box<dyn std::error::Error>> {
+
+
+        // serialize struct to bytes
+        let encoded_data = bincode::encode_to_vec(
+            data,
+            BINCODE_CONFIG,
+        ).unwrap();
+
+        // init crypto
+        let key = Sha256::digest(password);
+        let iv = thread_rng().r#gen::<[u8; 16]>(); // Random IV
+        let cipher = Aes256Cbc::new_from_slices(&key, &iv).unwrap(); // Cipher "tool" for crypto operations
+
+        // encrypt data and format
+        let encrypted_data = cipher.encrypt_vec(&encoded_data);
+        let mut combined_data = iv.to_vec(); // Complete by puting random in first block
+        combined_data.extend(encrypted_data);
+
+        // Write to file (CA_VAULT + name.dat)
+        let path_build = &resolve_path(CA_VAULT)
+        .join(format!("{}.dat",sanitize_name(name)));
+        write_to_file(&path_build, &combined_data).map_err(|e| e.into())
+    }
+
+    pub fn decrypt_from_file (name : &str, password: &str) -> Result<MyData, Box<dyn std::error::Error>> {
+
+        // read file
+        let path_build = &resolve_path(CA_VAULT)
+            .join(format!("{}.dat", sanitize_name(name)));
+
+        let file_content = std::fs::read(path_build)?;
+        
+        // init crypto
+        let (extracted_iv, encrypted_data) = file_content.split_at(16); // Get the first 16 bytes as IV
+        let key = Sha256::digest(password);
+        let cipher = Aes256Cbc::new_from_slices(&key, extracted_iv)?; // Cipher "tool" for crypto operations
+        // decrypt and deserialize data
+        let decrypted_data = cipher.decrypt_vec(encrypted_data)?;
+
+        let deserialize = bincode::decode_from_slice(&decrypted_data, BINCODE_CONFIG);
+        let resp = match deserialize{
+            Ok((data, _)) => data,
+            Err(e) => {
+                return Err(Box::new(e));
+            },
+        };
+        
+        return Ok(resp);
+    }
+
+
+//fn main(){
+//    let password = "my_secret_password";
+//    let data = MyData {
+//        name: "aaaaa".to_string(),
+//        age: 30,
+//    };
+//    println!("Data original: {:?}",  &data);
+//    let _ = encrypt_to_file("mydata", password, &data);
+//
+//    let decrypted_data = decrypt_from_file("mydata", "my_secret_password");
+//    println!("Decrypted data: {:?}",  &decrypted_data);
+//}
+
 }
