@@ -1,100 +1,392 @@
-use std::io::{self, Write};
-use std::rc::Rc;
 use crossterm::{
-    cursor,
-    event::{self, Event, KeyCode, KeyEvent},
+    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
     execute,
-    terminal::{self, ClearType},
-    ExecutableCommand,
+    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+};
+use std::io;
+use ratatui::{
+    backend::CrosstermBackend,
+    Terminal,
+    layout::{Alignment, Constraint, Direction, Layout, Rect},
+    style::{Color, Modifier, Style},
+    text::Line,
+    widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph, Wrap},
+    Frame,
 };
 
-pub enum MenuItem {
-    Action(&'static str, Rc<dyn Fn()>),
-    Submenu(&'static str, Menu),
+#[derive(Clone)]
+pub enum AppState {
+    SelectCA,
+    PasswordPopup,
+    Dashboard,
 }
 
-pub struct Menu {
-    pub title: &'static str,
-    pub items: Vec<MenuItem>,
-    pub current_index: usize,
+#[derive(Clone)]
+pub enum Focus {
+    StaticOption,
+    CertList,
+    Content,
 }
 
-impl Menu {
-    pub fn new(title: &'static str, items: Vec<MenuItem>) -> Self {
+#[derive(Clone)]
+pub struct App {
+    pub state: AppState,
+    pub ca_list: Vec<String>,
+    pub selected_ca: usize,
+    pub password: String,
+    pub success: bool,
+    pub static_menu: Vec<String>,
+    pub cert_list: Vec<String>,
+    pub selected_static: usize,
+    pub selected_cert: usize,
+    pub focus: Focus,
+}
+
+impl App {
+    pub fn new() -> Self {
+        let ca_list = vec![
+            "CA 1".to_string(),
+            "CA 2".to_string(),
+            "CA 3".to_string(),
+            "CA 4".to_string(),
+            "CA 5".to_string(),
+            "CA 6".to_string(),
+            "CA 7".to_string(),
+            "CA 8".to_string(),
+            "CA 9".to_string(),
+            "CA 10".to_string(),
+        ];
+        let static_menu = vec![
+            "CA".to_string(),
+            "Create Cert".to_string(),
+            "Import Cert".to_string(),
+        ];
+        let cert_list = vec![
+            "cert1".to_string(),
+            "cert2".to_string(),
+            "cert3".to_string(),
+            "cert4".to_string(),
+            "cert5".to_string(),
+            "cert6".to_string(),
+            "cert7".to_string(),
+            "cert8".to_string(),
+            "cert9".to_string(),
+            "cert10".to_string(),
+        ];
         Self {
-            title,
-            items,
-            current_index: 0,
+            state: AppState::SelectCA,
+            ca_list,
+            selected_ca: 0,
+            password: String::new(),
+            success: false,
+            static_menu,
+            cert_list,
+            selected_static: 0,
+            selected_cert: 0,
+            focus: Focus::StaticOption,
         }
     }
 
-    pub fn run(&mut self, stdout: &mut io::Stdout) -> Result<(), Box<dyn std::error::Error>> {
-        loop {
-            self.display(stdout)?;
+    pub fn run(&mut self) -> io::Result<()> {
+        // setup terminal
+        enable_raw_mode()?;
+        let mut stdout = io::stdout();
+        execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+        let backend = CrosstermBackend::new(stdout);
+        let mut terminal = Terminal::new(backend)?;
 
-            if let Event::Key(KeyEvent { code, .. }) = event::read()? {
-                match code {
-                    KeyCode::Up => {
-                        if self.current_index > 0 {
-                            self.current_index -= 1;
+        let mut running = true;
+        while running {
+            terminal.draw(|f| ui(f, self))?;
+            
+            if let Event::Key(key) = event::read()? {
+                match self.state {
+                    AppState::SelectCA => match key.code {
+                        KeyCode::Down => self.next_ca(),
+                        KeyCode::Up => self.previous_ca(),
+                        KeyCode::Enter => self.select_ca(),
+                        KeyCode::Esc => running = false,
+                        _ => {}
+                    },
+                    AppState::PasswordPopup => match key.code {
+                        KeyCode::Enter => self.submit_password(),
+                        KeyCode::Esc => self.back_to_select(),
+                        KeyCode::Backspace => {
+                            self.password.pop();
                         }
-                    }
-                    KeyCode::Down => {
-                        if self.current_index < self.items.len() - 1 {
-                            self.current_index += 1;
+                        KeyCode::Char(c) => {
+                            self.password.push(c);
                         }
-                    }
-                    KeyCode::Enter => {
-                        match &self.items[self.current_index] {
-                            MenuItem::Action(_, action) => {
-                                // Clear screen and execute action
-                                execute!(stdout, terminal::Clear(ClearType::All), cursor::MoveTo(0, 0), cursor::Hide)?;
-                                // Clone the Rc to get ownership and call the closure
-                                let action_cloned = action.clone();
-                                (&*action_cloned)();
-                                return Ok(()); // end action
-                            }
-                            MenuItem::Submenu(_, submenu) => {
-                                // Run submenu
-                                let mut sub = submenu.clone();
-                                sub.run(stdout)?;
-                            }
-                        }
-                    }
-                    KeyCode::Esc | KeyCode::Char('q') => return Ok(()), // Exit
-                    _ => {}
+                        _ => {}
+                    },
+                    AppState::Dashboard => match key.code {
+                        KeyCode::Tab => self.next_focus(),
+                        KeyCode::BackTab => self.previous_focus(),
+                        KeyCode::Down => self.next_item(),
+                        KeyCode::Up => self.previous_item(),
+                        KeyCode::Esc => self.state = AppState::SelectCA,
+                        _ => {}
+                    },
                 }
             }
         }
+        
+        // restore terminal
+        disable_raw_mode()?;
+        execute!(
+            terminal.backend_mut(),
+            LeaveAlternateScreen,
+            DisableMouseCapture
+        )?;
+        terminal.show_cursor()?;
+
+        Ok(())
     }
 
-    fn display(&self, stdout: &mut io::Stdout) -> Result<(), Box<dyn std::error::Error>> {
-        execute!(stdout, terminal::Clear(ClearType::All), cursor::MoveTo(0, 0), cursor::Hide)?;
-        write!(stdout, "{}\r\n", self.title)?;
-        for (i, item) in self.items.iter().enumerate() {
-            let prefix = if i == self.current_index { "\x1b[1m> " } else { "  " };
-            write!(stdout, "{}", prefix)?;
-            match item {
-                MenuItem::Action(name, _) => write!(stdout, "{}", name)?,
-                MenuItem::Submenu(name, _) => write!(stdout, "{}", name)?,
-            }
-            write!(stdout, "\x1b[0m\r\n")?; // reset + new line
+    pub fn next_ca(&mut self) {
+        if self.selected_ca < self.ca_list.len().saturating_sub(1) {
+            self.selected_ca += 1;
         }
-        stdout.flush()?;
-        Ok(())
+    }
+
+    pub fn previous_ca(&mut self) {
+        if self.selected_ca > 0 {
+            self.selected_ca = self.selected_ca.saturating_sub(1);
+        }
+    }
+
+    pub fn select_ca(&mut self) {
+        self.state = AppState::PasswordPopup;
+        self.password.clear();
+    }
+
+    pub fn back_to_select(&mut self) {
+        self.state = AppState::SelectCA;
+    }
+
+    pub fn submit_password(&mut self) {
+        self.success = true;
+        self.state = AppState::Dashboard;
+    }
+
+    pub fn next_focus(&mut self) {
+        self.focus = match self.focus {
+            Focus::StaticOption => Focus::CertList,
+            Focus::CertList => Focus::Content,
+            Focus::Content => Focus::StaticOption,
+        };
+    }
+
+    pub fn previous_focus(&mut self) {
+        self.focus = match self.focus {
+            Focus::StaticOption => Focus::Content,
+            Focus::CertList => Focus::StaticOption,
+            Focus::Content => Focus::CertList,
+        };
+    }
+
+    pub fn next_item(&mut self) {
+        match self.focus {
+            Focus::StaticOption => {
+                if self.selected_static < self.static_menu.len().saturating_sub(1) {
+                    self.selected_static += 1;
+                }
+            }
+            Focus::CertList => {
+                if self.selected_cert < self.cert_list.len().saturating_sub(1) {
+                    self.selected_cert += 1;
+                }
+            }
+            Focus::Content => {}
+        }
+    }
+
+    pub fn previous_item(&mut self) {
+        match self.focus {
+            Focus::StaticOption => {
+                if self.selected_static > 0 {
+                    self.selected_static = self.selected_static.saturating_sub(1);
+                }
+            }
+            Focus::CertList => {
+                if self.selected_cert > 0 {
+                    self.selected_cert = self.selected_cert.saturating_sub(1);
+                }
+            }
+            Focus::Content => {}
+        }
     }
 }
 
-impl Clone for Menu {
-    fn clone(&self) -> Self {
-        // Simple clone; actions are stored in Rc so they can be cloned cheaply
-        Self {
-            title: self.title,
-            items: self.items.iter().map(|item| match item {
-                MenuItem::Action(name, action) => MenuItem::Action(name, action.clone()),
-                MenuItem::Submenu(name, submenu) => MenuItem::Submenu(name, submenu.clone()),
-            }).collect(),
-            current_index: self.current_index,
+pub fn ui(f: &mut Frame, app: &mut App) {
+    let size = f.size();
+    match app.state {
+        AppState::SelectCA => draw_select_ca(f, app, size),
+        AppState::PasswordPopup => {
+            draw_select_ca(f, app, size);
+            draw_password_popup(f, app, size);
         }
+        AppState::Dashboard => draw_dashboard(f, app, size),
     }
+}
+
+fn draw_select_ca(f: &mut Frame, app: &mut App, size: Rect) {
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title("Select CA");
+    let inner_area = block.inner(size);
+    f.render_widget(block, size);
+
+    let items: Vec<ListItem> = app
+        .ca_list
+        .iter()
+        .enumerate()
+        .map(|(i, ca)| {
+            let style = if i == app.selected_ca {
+                Style::default().fg(Color::Black).bg(Color::White)
+            } else {
+                Style::default()
+            };
+            ListItem::new(ca.as_str()).style(style)
+        })
+        .collect();
+
+    let list = List::new(items)
+        .block(Block::default().borders(Borders::NONE))
+        .highlight_style(Style::default().add_modifier(Modifier::BOLD))
+        .highlight_symbol(">> ");
+
+    let mut state = ListState::default();
+    state.select(Some(app.selected_ca));
+
+    f.render_stateful_widget(list, inner_area, &mut state);
+}
+
+fn draw_password_popup(f: &mut Frame, app: &mut App, size: Rect) {
+    let area = popup_rect(25, 5, 40, 20, size);
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(app.ca_list[app.selected_ca].as_str());
+    f.render_widget(Clear, area); // clear the background
+    f.render_widget(&block, area);
+
+    let inner_area = block.inner(area);
+    let text = vec![
+        Line::from(""),
+        Line::from(format!("Password:{}", "*".repeat(app.password.len()))),
+        Line::from(""),
+    ];
+    let paragraph = Paragraph::new(text).wrap(Wrap { trim: true });
+    f.render_widget(paragraph, inner_area);
+}
+
+fn draw_dashboard(f: &mut Frame, app: &mut App, size: Rect) {
+    let block = Block::default().borders(Borders::ALL);
+    let inner_area = block.inner(size);
+    f.render_widget(block, size);
+
+    let chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(30), Constraint::Percentage(70)])
+        .split(inner_area);
+
+    // Left panel: split into static menu and cert list
+    let left_inner = chunks[0];
+
+    let left_chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(app.static_menu.len() as u16 + 2), // +2 for borders
+            Constraint::Min(1),
+        ])
+        .split(left_inner);
+
+    // Static menu block
+    let static_block = Block::default().borders(Borders::ALL);
+    let static_inner = static_block.inner(left_chunks[0]);
+    f.render_widget(static_block, left_chunks[0]);
+
+    let static_items: Vec<ListItem> = app
+        .static_menu
+        .iter()
+        .enumerate()
+        .map(|(i, item)| {
+            let style = if i == app.selected_static && matches!(app.focus, Focus::StaticOption) {
+                Style::default().fg(Color::Black).bg(Color::White)
+            } else {
+                Style::default()
+            };
+            ListItem::new(item.as_str()).style(style)
+        })
+        .collect();
+
+    let static_list = List::new(static_items)
+        .block(Block::default().borders(Borders::NONE))
+        .highlight_style(if matches!(app.focus, Focus::StaticOption) {
+            Style::default().add_modifier(Modifier::BOLD)
+        } else {
+            Style::default()
+        })
+        .highlight_symbol(if matches!(app.focus, Focus::StaticOption) { ">> " } else { "" });
+
+    let mut static_state = ListState::default();
+    if matches!(app.focus, Focus::StaticOption) {
+        static_state.select(Some(app.selected_static));
+    }
+
+    f.render_stateful_widget(static_list, static_inner, &mut static_state);
+
+    // Cert list block
+    let cert_block = Block::default().borders(Borders::ALL);
+    let cert_inner = cert_block.inner(left_chunks[1]);
+    f.render_widget(cert_block, left_chunks[1]);
+
+    let cert_items: Vec<ListItem> = app
+        .cert_list
+        .iter()
+        .enumerate()
+        .map(|(i, item)| {
+            let style = if i == app.selected_cert && matches!(app.focus, Focus::CertList) {
+                Style::default().fg(Color::Black).bg(Color::White)
+            } else {
+                Style::default()
+            };
+            ListItem::new(item.as_str()).style(style)
+        })
+        .collect();
+
+    let cert_list = List::new(cert_items)
+        .block(Block::default().borders(Borders::NONE))
+        .highlight_style(if matches!(app.focus, Focus::CertList) {
+            Style::default().add_modifier(Modifier::BOLD)
+        } else {
+            Style::default()
+        })
+        .highlight_symbol(if matches!(app.focus, Focus::CertList) { ">> " } else { "" });
+
+    let mut cert_state = ListState::default();
+    if matches!(app.focus, Focus::CertList) {
+        cert_state.select(Some(app.selected_cert));
+    }
+
+    f.render_stateful_widget(cert_list, cert_inner, &mut cert_state);
+
+    // Right panel: content
+    let right_block = Block::default().borders(Borders::ALL);
+    let right_inner = right_block.inner(chunks[1]);
+    f.render_widget(right_block, chunks[1]);
+
+    let paragraph = Paragraph::new("Content")
+        .block(Block::default().borders(Borders::NONE))
+        .alignment(Alignment::Center);
+    f.render_widget(paragraph, right_inner);
+}
+
+/// helper function to create a popup rect with minimum size and percentage
+fn popup_rect(min_width: u16, min_height: u16, percent_x: u16, percent_y: u16, r: Rect) -> Rect {
+    let desired_width = ((r.width * percent_x) / 100).max(min_width).min(r.width);
+    let desired_height = ((r.height * percent_y) / 100).max(min_height).min(r.height);
+    let x = r.x + (r.width.saturating_sub(desired_width)) / 2;
+    let y = r.y + (r.height.saturating_sub(desired_height)) / 2;
+    Rect::new(x, y, desired_width, desired_height)
 }

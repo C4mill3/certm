@@ -1,75 +1,21 @@
 mod front;
-mod tools;
+use front::App;
 
-use tools::mycrypt;
-use tools::certs_manager;
+fn main() -> Result<(), Box<dyn std::error::Error>> {
 
-use std::io;
-use std::rc::Rc;
-use crossterm::{
-    event,
-    terminal,
-};
+    // create app and run it
+    let mut app = App::new();
+    let res = app.run();
 
-pub fn run_menu() -> Result<(), Box<dyn std::error::Error>> {
-    terminal::enable_raw_mode()?;
-    let mut stdout = io::stdout();
-
-    // Define some example actions wrapped in Rc
-    let action1 = Rc::new(|| {
-        println!("Action 3 executed!");
-        println!("Additional logic for Action 3");
-        let _ = event::read(); // Wait for any key press
-    });
-
-    let sub_action1 = Rc::new(|| println!("Sub-action 1 executed!"));
-
-    let sub_action2 = Rc::new(|| println!("Sub-action 2 executed!"));
-
-
-    let submenu2 = front::Menu::new(
-        "Menu / Submenu 1 / Submenu 2",
-        vec![
-            front::MenuItem::Action("sub-choice 1", sub_action1.clone()),
-            front::MenuItem::Action("sub-choice 2", sub_action2.clone()),
-        ],
-    );
-
-
-    // Create submenu for Choice 2
-    let submenu = front::Menu::new(
-        "Menu / Submenu 1",
-        vec![
-            front::MenuItem::Submenu("sub-choice 1", submenu2),
-        ],
-    );
-
-    // Create main menu
-    let mut main_menu = front::Menu::new(
-        "Menu",
-        vec![
-            front::MenuItem::Action("List", action1.clone()),
-            front::MenuItem::Submenu("Create", submenu),
-            front::MenuItem::Action("Import", action1.clone()),
-            front::MenuItem::Action("Export", action1.clone()),
-        ],
-    );
-
-    // Run the menu system
-    main_menu.run(&mut stdout)?;
-    
-    // Disable raw mode
-    terminal::disable_raw_mode()?;
-    Ok(())
-}
-
-
-
-fn main() {
-    if let Err(err) = run_menu() {
-        eprintln!("Error: {}", err);
-        std::process::exit(1);
+    if app.success {
+        println!("Success");
     }
+
+    if let Err(err) = res {
+        println!("{:?}", err)
+    }
+
+    Ok(())
 }
 
 // Test mycrypt
