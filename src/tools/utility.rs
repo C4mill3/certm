@@ -6,6 +6,9 @@ use std::os::unix::fs::PermissionsExt; // For Unix only
 use std::io::Write;
 use shellexpand;
 
+pub const CA_VAULT : &'static str = "~/.ca_vault/";
+
+
 pub enum FSItemType {
     All,
     Files,
@@ -26,7 +29,7 @@ pub fn run_command(command : &str, args : &[&str]) -> String {
     return stdout.to_string(); 
 }
 
-pub fn list_in_path(path: &Path, filter : FSItemType) -> io::Result<Vec<String>> {
+pub fn list_in_path(path: &Path, filter : FSItemType) -> Result<Vec<String>, Box<dyn std::error::Error>> {
     let mut items: Vec<String> = Vec::new();
 
     if path.is_dir() {
@@ -57,10 +60,11 @@ pub fn list_in_path(path: &Path, filter : FSItemType) -> io::Result<Vec<String>>
             }
             
         }
-        return Ok(items);
-    } else {
-        return Ok(Vec::new());
+
+    }else{
+        return Err(Box::from("No such path found"));
     }
+    return Ok(items);
 }
 
 pub fn path_exist(path: &Path) -> Result<bool, io::Error> {
@@ -91,13 +95,26 @@ pub fn resolve_path(path: &str) -> PathBuf {
     PathBuf::from(resolved_path)
 }
 
-pub fn write_to_file(filepath: &Path, data: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
-    // Open or create the file with specified options
+pub fn create_folder(path: &Path, permissions: u32) -> Result<(), Box<dyn std::error::Error>> {
+    // permissions exemple : 0o600
+    // Create the folder
+    fs::create_dir_all(&path)?;
+
+    // Set the permissions
+    let permissions = Permissions::from_mode(permissions);
+    set_permissions(&path, permissions)?;
+
+    Ok(())
+}
+
+pub fn write_to_file(filepath: &Path, data: &[u8], permissions: u32) -> Result<(), Box<dyn std::error::Error>> {
+    // permissions exemple : 0o600
+    // Open or create the file
     let mut file = File::create(&filepath)?;
     file.write_all(data)?;
 
-    // Set file permissions to 600 
-    let permissions = Permissions::from_mode(0o600); // (rw- --- ---)
+    // Set file permissions
+    let permissions = Permissions::from_mode(permissions);
     set_permissions(&filepath, permissions)?;
 
     Ok(())

@@ -5,19 +5,18 @@ use crossterm::{
 };
 use std::io;
 use ratatui::{
-    backend::CrosstermBackend,
-    Terminal,
-    layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
-    text::Line,
-    widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph, Wrap},
-    Frame,
+    Frame, Terminal, backend::CrosstermBackend, layout::{Alignment, Constraint, Direction, Layout, Rect}, style::{Color, Modifier, Style}, text::Line, widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph, Wrap, block::Title}
 };
+
+//backend
+use crate::tools;
+use tools::certs_manager::{Realm, Cert};
+
 
 #[derive(Clone)]
 pub enum AppState {
-    SelectCA,
-    PasswordPopup,
+    SelectRealm,
+    PasswordPrompt,
     Dashboard,
 }
 
@@ -31,8 +30,8 @@ pub enum Focus {
 #[derive(Clone)]
 pub struct App {
     pub state: AppState,
-    pub ca_list: Vec<String>,
-    pub selected_ca: usize,
+    pub realm_list: Vec<String>,
+    pub selected_realm: usize,
     pub password: String,
     pub success: bool,
     pub static_menu: Vec<String>,
@@ -44,20 +43,10 @@ pub struct App {
 
 impl App {
     pub fn new() -> Self {
-        let ca_list = vec![
-            "CA 1".to_string(),
-            "CA 2".to_string(),
-            "CA 3".to_string(),
-            "CA 4".to_string(),
-            "CA 5".to_string(),
-            "CA 6".to_string(),
-            "CA 7".to_string(),
-            "CA 8".to_string(),
-            "CA 9".to_string(),
-            "CA 10".to_string(),
-        ];
+        let realm_list: Vec<String> = Realm::list().unwrap();
+
         let static_menu = vec![
-            "CA".to_string(),
+            "CA Info".to_string(),
             "Create Cert".to_string(),
             "Import Cert".to_string(),
         ];
@@ -74,9 +63,9 @@ impl App {
             "cert10".to_string(),
         ];
         Self {
-            state: AppState::SelectCA,
-            ca_list,
-            selected_ca: 0,
+            state: AppState::SelectRealm,
+            realm_list,
+            selected_realm: 0,
             password: String::new(),
             success: false,
             static_menu,
@@ -101,14 +90,14 @@ impl App {
             
             if let Event::Key(key) = event::read()? {
                 match self.state {
-                    AppState::SelectCA => match key.code {
-                        KeyCode::Down => self.next_ca(),
-                        KeyCode::Up => self.previous_ca(),
-                        KeyCode::Enter => self.select_ca(),
+                    AppState::SelectRealm => match key.code {
+                        KeyCode::Down => self.next_realm(),
+                        KeyCode::Up => self.previous_realm(),
+                        KeyCode::Enter => self.select_realm(),
                         KeyCode::Esc => running = false,
                         _ => {}
                     },
-                    AppState::PasswordPopup => match key.code {
+                    AppState::PasswordPrompt => match key.code {
                         KeyCode::Enter => self.submit_password(),
                         KeyCode::Esc => self.back_to_select(),
                         KeyCode::Backspace => {
@@ -124,7 +113,7 @@ impl App {
                         KeyCode::BackTab => self.previous_focus(),
                         KeyCode::Down => self.next_item(),
                         KeyCode::Up => self.previous_item(),
-                        KeyCode::Esc => self.state = AppState::SelectCA,
+                        KeyCode::Esc => {self.realm_list = Realm::list().unwrap(); self.state = AppState::SelectRealm}, // refresh list, then switch
                         _ => {}
                     },
                 }
@@ -143,25 +132,25 @@ impl App {
         Ok(())
     }
 
-    pub fn next_ca(&mut self) {
-        if self.selected_ca < self.ca_list.len().saturating_sub(1) {
-            self.selected_ca += 1;
+    pub fn next_realm(&mut self) {
+        if self.selected_realm < self.realm_list.len().saturating_sub(1) {
+            self.selected_realm += 1;
         }
     }
 
-    pub fn previous_ca(&mut self) {
-        if self.selected_ca > 0 {
-            self.selected_ca = self.selected_ca.saturating_sub(1);
+    pub fn previous_realm(&mut self) {
+        if self.selected_realm > 0 {
+            self.selected_realm = self.selected_realm.saturating_sub(1);
         }
     }
 
-    pub fn select_ca(&mut self) {
-        self.state = AppState::PasswordPopup;
+    pub fn select_realm(&mut self) {
+        self.state = AppState::PasswordPrompt;
         self.password.clear();
     }
 
     pub fn back_to_select(&mut self) {
-        self.state = AppState::SelectCA;
+        self.state = AppState::SelectRealm;
     }
 
     pub fn submit_password(&mut self) {
@@ -221,28 +210,28 @@ impl App {
 pub fn ui(f: &mut Frame, app: &mut App) {
     let size = f.size();
     match app.state {
-        AppState::SelectCA => draw_select_ca(f, app, size),
-        AppState::PasswordPopup => {
-            draw_select_ca(f, app, size);
-            draw_password_popup(f, app, size);
+        AppState::SelectRealm => draw_select_realm(f, app, size),
+        AppState::PasswordPrompt => {
+            draw_select_realm(f, app, size);
+            draw_password_prompt(f, app, size);
         }
         AppState::Dashboard => draw_dashboard(f, app, size),
     }
 }
 
-fn draw_select_ca(f: &mut Frame, app: &mut App, size: Rect) {
+fn draw_select_realm(f: &mut Frame, app: &mut App, size: Rect) {
     let block = Block::default()
         .borders(Borders::ALL)
-        .title("Select CA");
+        .title("Select Realm");
     let inner_area = block.inner(size);
     f.render_widget(block, size);
 
     let items: Vec<ListItem> = app
-        .ca_list
+        .realm_list
         .iter()
         .enumerate()
         .map(|(i, ca)| {
-            let style = if i == app.selected_ca {
+            let style = if i == app.selected_realm {
                 Style::default().fg(Color::Black).bg(Color::White)
             } else {
                 Style::default()
@@ -257,16 +246,16 @@ fn draw_select_ca(f: &mut Frame, app: &mut App, size: Rect) {
         .highlight_symbol(">> ");
 
     let mut state = ListState::default();
-    state.select(Some(app.selected_ca));
+    state.select(Some(app.selected_realm));
 
     f.render_stateful_widget(list, inner_area, &mut state);
 }
 
-fn draw_password_popup(f: &mut Frame, app: &mut App, size: Rect) {
+fn draw_password_prompt(f: &mut Frame, app: &mut App, size: Rect) {
     let area = popup_rect(25, 5, 40, 20, size);
     let block = Block::default()
         .borders(Borders::ALL)
-        .title(app.ca_list[app.selected_ca].as_str());
+        .title(app.realm_list[app.selected_realm].as_str());
     f.render_widget(Clear, area); // clear the background
     f.render_widget(&block, area);
 
@@ -281,7 +270,9 @@ fn draw_password_popup(f: &mut Frame, app: &mut App, size: Rect) {
 }
 
 fn draw_dashboard(f: &mut Frame, app: &mut App, size: Rect) {
-    let block = Block::default().borders(Borders::ALL);
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(Title::from(app.realm_list[app.selected_realm].as_str()).alignment(Alignment::Center));
     let inner_area = block.inner(size);
     f.render_widget(block, size);
 

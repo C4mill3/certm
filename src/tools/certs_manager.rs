@@ -7,6 +7,8 @@ use std::net::IpAddr;
 use std::str;
 use rand::Rng;
 
+use super::utility::{FSItemType, list_in_path, CA_VAULT, resolve_path};
+
 #[derive(Debug)]
 pub enum CertType{
     Server,
@@ -101,7 +103,15 @@ pub struct Realm {
 
 impl Realm {
     pub fn new(name: &'static str, ca_key_size: KeySize, ca_common_name: &str, ca_organization: &str, ca_country: &str) -> Result<Self, Box<dyn std::error::Error>>{
-        return new_realm(name, ca_key_size, ca_common_name, ca_organization, ca_country);
+        let ca = generate_new_ca(ca_key_size, ca_common_name, ca_organization, ca_country)?;
+        let certs: Vec<Cert> = Vec::new();
+        let resp = Realm{
+            name: name.to_string(),
+            ca,
+            last_serial_num: 1000,
+            certs,
+        };
+        return Ok(resp);
     }
 
     pub fn new_from_ca(name: &'static str, ca_cert: String, ca_private_key: String) -> Result<Self, Box<dyn std::error::Error>> {
@@ -242,18 +252,15 @@ impl Realm {
         self.certs.remove(cert_id);
         Ok(())
     }
-}
 
-fn new_realm(name: &'static str, ca_key_size: KeySize, ca_common_name: &str, ca_organization: &str, ca_country: &str) -> Result<Realm, Box<dyn std::error::Error>> {
-    let ca = generate_new_ca(ca_key_size, ca_common_name, ca_organization, ca_country)?;
-    let certs: Vec<Cert> = Vec::new();
-    let resp = Realm{
-        name: name.to_string(),
-        ca,
-        last_serial_num: 1000,
-        certs,
-    };
-    return Ok(resp);
+    pub fn list() -> Result<Vec<String>, Box<dyn std::error::Error>>{
+        let vaults = list_in_path(&resolve_path(CA_VAULT), FSItemType::Files)?;
+        let formatted: Vec<String> = vaults
+            .iter()
+            .map(|s| s.trim_end_matches(".dat").replace("_", "."))
+            .collect();
+        Ok(formatted)
+    }
 }
 
 fn generate_new_ca(key_size : KeySize, common_name : &str, organization : &str, country : &str) -> Result<Cert, Box<dyn std::error::Error>>{
@@ -438,7 +445,7 @@ fn generate_new_cert(ca: &Cert, cert_type: CertType, serial_number: u32, key_siz
                 der.extend_from_slice(&[0x06, 0x08, 0x2B, 0x06, 0x01, 0x05, 0x05, 0x07, 0x03, 0x02]); // TLS Web Client Authentication
             }
             CertType::Ca | CertType::Unknown => {
-                return Err(Box::from("Will not this type of Cert"));
+                return Err(Box::from("Will not generate this type of Cert"));
             }
         }
         der

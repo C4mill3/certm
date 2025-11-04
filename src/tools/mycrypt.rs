@@ -6,16 +6,13 @@ use rand::Rng;
 use sha2::{Sha256, Digest};
 use bincode::{self, config::Configuration};
 
-use super::utility::{sanitize_name, resolve_path, write_to_file};
+use super::utility::{sanitize_name, resolve_path, write_to_file, CA_VAULT};
 
 type Aes256Cbc = Cbc<Aes256, Pkcs7>;
 
 const BINCODE_CONFIG: Configuration<BigEndian> = bincode::config::standard()
     .with_big_endian()
     .with_variable_int_encoding();
-
-const CA_VAULT : &'static str = "~/.ca_vault/";
-
 
 #[derive(Debug)] // TODO Needed for printing the struct (for demonstration only)
 #[derive(bincode::Encode, bincode::Decode)] //Automatically implement Encode and Decode traits
@@ -47,7 +44,7 @@ pub fn encrypt_to_file (name : &str, password: &str, data : &MyData) -> Result<(
     // Write to file (CA_VAULT + name.dat)
     let path_build = &resolve_path(CA_VAULT)
     .join(format!("{}.dat",sanitize_name(name)));
-    write_to_file(&path_build, &combined_data)?;
+    write_to_file(&path_build, &combined_data, 0o600)?;
     Ok(())
 }
 
