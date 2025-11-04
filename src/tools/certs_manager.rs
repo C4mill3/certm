@@ -255,10 +255,11 @@ impl Realm {
 
     pub fn list() -> Result<Vec<String>, Box<dyn std::error::Error>>{
         let vaults = list_in_path(&resolve_path(CA_VAULT), FSItemType::Files)?;
-        let formatted: Vec<String> = vaults
+        let mut formatted: Vec<String> = vaults
             .iter()
             .map(|s| s.trim_end_matches(".dat").replace("_", "."))
             .collect();
+        formatted.sort();
         Ok(formatted)
     }
 }

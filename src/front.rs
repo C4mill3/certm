@@ -3,9 +3,10 @@ use crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
+use sha2::digest::crypto_common::Key;
 use std::io;
 use ratatui::{
-    Frame, Terminal, backend::CrosstermBackend, layout::{Alignment, Constraint, Direction, Layout, Rect}, style::{Color, Modifier, Style}, text::Line, widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph, Wrap, block::Title}
+    Frame, Terminal, backend::CrosstermBackend, layout::{Alignment, Constraint, Direction, Layout, Rect}, style::{Color, Modifier, Style, Stylize}, symbols::{DOT, half_block::UPPER}, text::Line, widgets::{self, Block, BorderType, Borders, Clear, List, ListItem, ListState, Paragraph, Wrap, block::Title}
 };
 
 //backend
@@ -16,6 +17,7 @@ use tools::certs_manager::{Realm, Cert};
 #[derive(Clone)]
 pub enum AppState {
     SelectRealm,
+    //NewRealmForm,
     PasswordPrompt,
     Dashboard,
 }
@@ -92,6 +94,8 @@ impl App {
                 match self.state {
                     AppState::SelectRealm => match key.code {
                         KeyCode::Down => self.next_realm(),
+                        KeyCode::Home => self.fast_previous_realm(),
+                        KeyCode::End => self.fast_next_realm(),
                         KeyCode::Up => self.previous_realm(),
                         KeyCode::Enter => self.select_realm(),
                         KeyCode::Esc => running = false,
@@ -99,7 +103,7 @@ impl App {
                     },
                     AppState::PasswordPrompt => match key.code {
                         KeyCode::Enter => self.submit_password(),
-                        KeyCode::Esc => self.back_to_select(),
+                        KeyCode::Esc => self.back_to_select_realm(),
                         KeyCode::Backspace => {
                             self.password.pop();
                         }
@@ -109,10 +113,10 @@ impl App {
                         _ => {}
                     },
                     AppState::Dashboard => match key.code {
-                        KeyCode::Tab => self.next_focus(),
-                        KeyCode::BackTab => self.previous_focus(),
-                        KeyCode::Down => self.next_item(),
-                        KeyCode::Up => self.previous_item(),
+                        KeyCode::Tab => self.next_focus_dashboard(),
+                        KeyCode::BackTab => self.previous_focus_dashboard(),
+                        KeyCode::Down => self.next_item_dashboard(),
+                        KeyCode::Up => self.previous_item_dashboard(),
                         KeyCode::Esc => {self.realm_list = Realm::list().unwrap(); self.state = AppState::SelectRealm}, // refresh list, then switch
                         _ => {}
                     },
@@ -138,9 +142,23 @@ impl App {
         }
     }
 
-    pub fn previous_realm(&mut self) {
+    pub fn fast_next_realm(&mut self) {
+        if self.selected_realm+10 < self.realm_list.len().saturating_sub(1) {
+            self.selected_realm+=10;
+        }else {
+            self.selected_realm = self.realm_list.len().saturating_sub(1);
+        }
+    }
+
+    pub fn previous_realm(&mut self) { 
         if self.selected_realm > 0 {
             self.selected_realm = self.selected_realm.saturating_sub(1);
+        }
+    }
+
+    pub fn fast_previous_realm(&mut self) { 
+        if self.selected_realm > 0 {
+            self.selected_realm = self.selected_realm.saturating_sub(10);
         }
     }
 
@@ -149,7 +167,7 @@ impl App {
         self.password.clear();
     }
 
-    pub fn back_to_select(&mut self) {
+    pub fn back_to_select_realm(&mut self) {
         self.state = AppState::SelectRealm;
     }
 
@@ -158,7 +176,7 @@ impl App {
         self.state = AppState::Dashboard;
     }
 
-    pub fn next_focus(&mut self) {
+    pub fn next_focus_dashboard(&mut self) {
         self.focus = match self.focus {
             Focus::StaticOption => Focus::CertList,
             Focus::CertList => Focus::Content,
@@ -166,7 +184,7 @@ impl App {
         };
     }
 
-    pub fn previous_focus(&mut self) {
+    pub fn previous_focus_dashboard(&mut self) {
         self.focus = match self.focus {
             Focus::StaticOption => Focus::Content,
             Focus::CertList => Focus::StaticOption,
@@ -174,7 +192,7 @@ impl App {
         };
     }
 
-    pub fn next_item(&mut self) {
+    pub fn next_item_dashboard(&mut self) {
         match self.focus {
             Focus::StaticOption => {
                 if self.selected_static < self.static_menu.len().saturating_sub(1) {
@@ -190,7 +208,7 @@ impl App {
         }
     }
 
-    pub fn previous_item(&mut self) {
+    pub fn previous_item_dashboard(&mut self) {
         match self.focus {
             Focus::StaticOption => {
                 if self.selected_static > 0 {
@@ -210,19 +228,24 @@ impl App {
 pub fn ui(f: &mut Frame, app: &mut App) {
     let size = f.size();
     match app.state {
-        AppState::SelectRealm => draw_select_realm(f, app, size),
+        AppState::SelectRealm => draw_select_realm(f, app, size, true),
         AppState::PasswordPrompt => {
-            draw_select_realm(f, app, size);
+            draw_select_realm(f, app, size, false);
             draw_password_prompt(f, app, size);
         }
         AppState::Dashboard => draw_dashboard(f, app, size),
     }
 }
 
-fn draw_select_realm(f: &mut Frame, app: &mut App, size: Rect) {
-    let block = Block::default()
+fn draw_select_realm(f: &mut Frame, app: &mut App, size: Rect, tips : bool) {
+    let mut block = Block::default()
         .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
         .title("Select Realm");
+    if tips{
+        block = block.title(Title::from(Line::from(vec!["Esc".red(), DOT.into(), "↑↓".red(), DOT.into(), "Select".into(), "↵".red(), DOT.into(), "N".red(), "ew".into()]))
+            .position(widgets::block::Position::Bottom).alignment(Alignment::Right));
+    }
     let inner_area = block.inner(size);
     f.render_widget(block, size);
 
@@ -243,7 +266,7 @@ fn draw_select_realm(f: &mut Frame, app: &mut App, size: Rect) {
     let list = List::new(items)
         .block(Block::default().borders(Borders::NONE))
         .highlight_style(Style::default().add_modifier(Modifier::BOLD))
-        .highlight_symbol(">> ");
+        .highlight_symbol("> ");
 
     let mut state = ListState::default();
     state.select(Some(app.selected_realm));
@@ -255,6 +278,7 @@ fn draw_password_prompt(f: &mut Frame, app: &mut App, size: Rect) {
     let area = popup_rect(25, 5, 40, 20, size);
     let block = Block::default()
         .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
         .title(app.realm_list[app.selected_realm].as_str());
     f.render_widget(Clear, area); // clear the background
     f.render_widget(&block, area);
@@ -272,6 +296,7 @@ fn draw_password_prompt(f: &mut Frame, app: &mut App, size: Rect) {
 fn draw_dashboard(f: &mut Frame, app: &mut App, size: Rect) {
     let block = Block::default()
         .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
         .title(Title::from(app.realm_list[app.selected_realm].as_str()).alignment(Alignment::Center));
     let inner_area = block.inner(size);
     f.render_widget(block, size);
@@ -293,7 +318,7 @@ fn draw_dashboard(f: &mut Frame, app: &mut App, size: Rect) {
         .split(left_inner);
 
     // Static menu block
-    let static_block = Block::default().borders(Borders::ALL);
+    let static_block = Block::default().borders(Borders::ALL).border_type(BorderType::Rounded);
     let static_inner = static_block.inner(left_chunks[0]);
     f.render_widget(static_block, left_chunks[0]);
 
@@ -318,7 +343,7 @@ fn draw_dashboard(f: &mut Frame, app: &mut App, size: Rect) {
         } else {
             Style::default()
         })
-        .highlight_symbol(if matches!(app.focus, Focus::StaticOption) { ">> " } else { "" });
+        .highlight_symbol(if matches!(app.focus, Focus::StaticOption) { "> " } else { "" });
 
     let mut static_state = ListState::default();
     if matches!(app.focus, Focus::StaticOption) {
@@ -328,7 +353,7 @@ fn draw_dashboard(f: &mut Frame, app: &mut App, size: Rect) {
     f.render_stateful_widget(static_list, static_inner, &mut static_state);
 
     // Cert list block
-    let cert_block = Block::default().borders(Borders::ALL);
+    let cert_block = Block::default().borders(Borders::ALL).border_type(BorderType::Rounded);
     let cert_inner = cert_block.inner(left_chunks[1]);
     f.render_widget(cert_block, left_chunks[1]);
 
@@ -353,7 +378,7 @@ fn draw_dashboard(f: &mut Frame, app: &mut App, size: Rect) {
         } else {
             Style::default()
         })
-        .highlight_symbol(if matches!(app.focus, Focus::CertList) { ">> " } else { "" });
+        .highlight_symbol(if matches!(app.focus, Focus::CertList) { "> " } else { "" });
 
     let mut cert_state = ListState::default();
     if matches!(app.focus, Focus::CertList) {
@@ -363,7 +388,7 @@ fn draw_dashboard(f: &mut Frame, app: &mut App, size: Rect) {
     f.render_stateful_widget(cert_list, cert_inner, &mut cert_state);
 
     // Right panel: content
-    let right_block = Block::default().borders(Borders::ALL);
+    let right_block = Block::default().borders(Borders::ALL).border_type(BorderType::Rounded);
     let right_inner = right_block.inner(chunks[1]);
     f.render_widget(right_block, chunks[1]);
 
