@@ -12,7 +12,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut app = App::new();
     let res = app.run();
 
-    if app.success {
+    if app.password_success {
         println!("Success");
     }
 

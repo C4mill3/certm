@@ -62,7 +62,7 @@ pub fn list_in_path(path: &Path, filter : FSItemType) -> Result<Vec<String>, Box
         }
 
     }else{
-        return Err(Box::from("No such path found"));
+        return Err(Box::from("No such path "));
     }
     return Ok(items);
 }
