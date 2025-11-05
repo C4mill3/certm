@@ -30,10 +30,12 @@ fn draw_select_realm(f: &mut Frame, app: &mut App, size: Rect, tips : bool) {
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
         .title("Select Realm");
+    
     if tips{
         block = block.title(Title::from(Line::from(vec!["Esc".red(), DOT.into(), "↑↓".red(), DOT.into(), "Select".into(), "↵".red(), DOT.into(), "N".red(), "ew".into()]))
             .position(widgets::block::Position::Bottom).alignment(Alignment::Right));
     }
+
     let inner_area = block.inner(size);
     f.render_widget(block, size);
 
@@ -95,8 +97,8 @@ fn draw_new_realm_form(f: &mut Frame, app: &mut App, size: Rect) {
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(6), // Realm block
-            Constraint::Length(12), // CA block
-            Constraint::Length(3), // Buttons
+            Constraint::Length(10), // CA block
+            Constraint::Length(2), // Buttons
         ])
         .split(inner_area);
 
@@ -108,11 +110,17 @@ fn draw_new_realm_form(f: &mut Frame, app: &mut App, size: Rect) {
     let realm_inner = realm_block.inner(chunks[0]);
     f.render_widget(realm_block, chunks[0]);
 
+    // Calculate available width for Realm fields
+    let available_width = realm_inner.width as usize;
+
+    let name_full = if app.nrf_selected_field == 0 { app.nrf_name.clone() + "_" } else { app.nrf_name.clone() };
+    let password_full = if app.nrf_selected_field == 1 { "*".repeat(app.nrf_form_password.len()) + "_" } else { "*".repeat(app.nrf_form_password.len()) };
+
     let realm_lines = vec![
         Line::from(""),
-        Line::from(format!("Name: {}", if app.nrf_selected_field == 0 { app.nrf_name.clone() + "_" } else { app.nrf_name.clone() })).style(if app.nrf_selected_field == 0 { Style::default().add_modifier(Modifier::BOLD) } else { Style::default() }),
+        Line::from(format!("Name: {}", truncate_with_ellipsis(&name_full, available_width, "Name: ".len()) )).style(if app.nrf_selected_field == 0 { Style::default().add_modifier(Modifier::BOLD) } else { Style::default() }),
         Line::from(""),
-        Line::from(format!("Password: {}", if app.nrf_selected_field == 1 { "*".repeat(app.nrf_form_password.len()) + "_" } else { "*".repeat(app.nrf_form_password.len()) })).style(if app.nrf_selected_field == 1 { Style::default().add_modifier(Modifier::BOLD) } else { Style::default() }),
+        Line::from(format!("Password: {}", truncate_with_ellipsis(&password_full, available_width, "Password: ".len()) )).style(if app.nrf_selected_field == 1 { Style::default().add_modifier(Modifier::BOLD) } else { Style::default() }),
         Line::from(""),
     ];
     let realm_paragraph = Paragraph::new(realm_lines).wrap(Wrap { trim: true });
@@ -126,14 +134,19 @@ fn draw_new_realm_form(f: &mut Frame, app: &mut App, size: Rect) {
     let ca_inner = ca_block.inner(chunks[1]);
     f.render_widget(ca_block, chunks[1]);
 
+
+    let common_name_full = if app.nrf_selected_field == 2 { app.nrf_ca_common_name.clone() + "_" } else { app.nrf_ca_common_name.clone() };
+    let organization_full = if app.nrf_selected_field == 3 { app.nrf_ca_organization.clone() + "_" } else { app.nrf_ca_organization.clone() };
+    let country_full = if app.nrf_selected_field == 4 { app.nrf_ca_country.clone() + "_" } else { app.nrf_ca_country.clone() };
+
     let key_sizes = [1024, 2048, 4096];
     let ca_lines = vec![
         Line::from(""),
-        Line::from(format!("Common Name: {}", if app.nrf_selected_field == 2 { app.nrf_ca_common_name.clone() + "_" } else { app.nrf_ca_common_name.clone() })).style(if app.nrf_selected_field == 2 { Style::default().add_modifier(Modifier::BOLD) } else { Style::default() }),
+        Line::from(format!("Common Name: {}", truncate_with_ellipsis(&common_name_full, available_width, "Common Name: ".len()) )).style(if app.nrf_selected_field == 2 { Style::default().add_modifier(Modifier::BOLD) } else { Style::default() }),
         Line::from(""),
-        Line::from(format!("Organization: {}", if app.nrf_selected_field == 3 { app.nrf_ca_organization.clone() + "_" } else { app.nrf_ca_organization.clone() })).style(if app.nrf_selected_field == 3 { Style::default().add_modifier(Modifier::BOLD) } else { Style::default() }),
+        Line::from(format!("Organization: {}", truncate_with_ellipsis(&organization_full, available_width, "Organization: ".len()) )).style(if app.nrf_selected_field == 3 { Style::default().add_modifier(Modifier::BOLD) } else { Style::default() }),
         Line::from(""),
-        Line::from(format!("Country: {}", if app.nrf_selected_field == 4 { app.nrf_ca_country.clone() + "_" } else { app.nrf_ca_country.clone() })).style(if app.nrf_selected_field == 4 { Style::default().add_modifier(Modifier::BOLD) } else { Style::default() }),
+        Line::from(format!("Country: {}", truncate_with_ellipsis(&country_full, available_width, "Country: ".len()) )).style(if app.nrf_selected_field == 4 { Style::default().add_modifier(Modifier::BOLD) } else { Style::default() }),
         Line::from(""),
         Line::from(format!("Key Size: {} {} {}",
             if app.nrf_selected_field == 5 && app.nrf_ca_key_size_index > 0 { "←" } else { " " },
@@ -146,7 +159,7 @@ fn draw_new_realm_form(f: &mut Frame, app: &mut App, size: Rect) {
 
     // Buttons
     let button_chunks = Layout::default()
-        .direction(Direction::Horizontal)
+        .direction(Direction::Vertical)
         .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
         .split(chunks[2]);
 
@@ -154,13 +167,13 @@ fn draw_new_realm_form(f: &mut Frame, app: &mut App, size: Rect) {
     let create_paragraph = Paragraph::new(create_text)
         .alignment(Alignment::Center)
         .style(if app.nrf_selected_field == 6 { Style::default().add_modifier(Modifier::BOLD) } else { Style::default() });
-    f.render_widget(create_paragraph, button_chunks[1]);
+    f.render_widget(create_paragraph, button_chunks[0]);
 
     let cancel_text = if app.nrf_selected_field == 7 { "[Cancel]" } else { " Cancel " };
     let cancel_paragraph     = Paragraph::new(cancel_text)
         .alignment(Alignment::Center)
         .style(if app.nrf_selected_field == 7 { Style::default().add_modifier(Modifier::BOLD) } else { Style::default() });
-    f.render_widget(cancel_paragraph, button_chunks[0]);
+    f.render_widget(cancel_paragraph, button_chunks[1]);
 
 }
 
@@ -276,4 +289,18 @@ pub fn popup_rect(min_width: u16, min_height: u16, percent_x: u16, percent_y: u1
     let x = r.x + (r.width.saturating_sub(desired_width)) / 2;
     let y = r.y + (r.height.saturating_sub(desired_height)) / 2;
     Rect::new(x, y, desired_width, desired_height)
+}
+
+fn truncate_with_ellipsis(s: &str, available_width: usize, text_size: usize) -> String {
+    let max_len = available_width.saturating_sub(text_size+1); // +1 buffer
+    if s.len() <= max_len {
+
+        s.to_string()
+
+    } else {
+
+        format!("…{}", &s[s.len().saturating_sub(max_len)..]) // …
+
+    }
+
 }
