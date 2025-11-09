@@ -1,17 +1,15 @@
-// front/ui.rs
-
 use ratatui::{
-    Frame, Terminal, backend::CrosstermBackend, layout::{Alignment, Constraint, Direction, Layout, Rect}, style::{Color, Modifier, Style, Stylize}, symbols::DOT, text::Line, widgets::{self, Block, BorderType, Borders, Clear, List, ListItem, ListState, Paragraph, Wrap, block::Title}
+    Frame, Terminal, backend::CrosstermBackend, layout::{Alignment, Constraint, Direction, Layout, Rect}, style::{Color, Modifier, Style, Stylize}, symbols::DOT, text::Line, widgets::{self, Block, BorderType, Borders, Clear, List, ListItem, ListState, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Widget, Wrap, block::Title}
 };
 
 // Import App and related types from the app module
 use super::app::*;
 
-// Note: No need for crossterm or std::io here, as they're not used in UI rendering.
 
 pub fn ui(f: &mut Frame, app: &mut App) {
     let size = f.size();
     match app.state {
+        AppState::ErrorPrompt => draw_error_prompt(f, app, size),
         AppState::SelectRealm => draw_select_realm(f, app, size, true),
         AppState::PasswordPrompt => {
             draw_select_realm(f, app, size, false);
@@ -25,6 +23,71 @@ pub fn ui(f: &mut Frame, app: &mut App) {
     }
 }
 
+fn draw_error_prompt(f: &mut Frame, app: &mut App, size: Rect) {
+    let area = popup_rect(50, 20, 60, 70, size);
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .title("Error")
+        .title(Title::from(Line::from(vec!["↑↓".red(), DOT.into(), "Esc".red()]))
+            .position(widgets::block::Position::Bottom)
+            .alignment(Alignment::Right));
+
+    f.render_widget(Clear, area); // clear the background
+    f.render_widget(&block, area);
+
+    let inner_area = block.inner(area);
+
+    // Calculate content height for scrollbar
+    let content_width = inner_area.width as usize;  // Use full width if no scrollbar
+    let content_height = app.last_error.lines().map(|line| {
+        if line.len() <= content_width {
+            1
+        } else {
+            (line.len() + content_width - 1) / content_width
+        }
+    }).sum::<usize>();
+
+    let visible_height = inner_area.height as usize;
+    app.max_scroll = content_height.saturating_sub(visible_height);  // Set the global max scroll
+
+    if content_height > visible_height {
+        // Split for text and scrollbar
+        let chunks = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Min(1), Constraint::Length(1)])
+            .split(inner_area);
+
+        let text_area = chunks[0];
+        let scrollbar_area = chunks[1];
+
+        let paragraph = Paragraph::new(app.last_error.clone())
+            .block(Block::default().borders(Borders::NONE))
+            .wrap(Wrap { trim: true })
+            .scroll((app.scroll as u16, 0));
+
+        f.render_widget(paragraph, text_area);
+
+        let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
+            .begin_symbol(Some("↑"))
+            .end_symbol(Some("↓"));
+        f.render_stateful_widget(
+            scrollbar,
+            scrollbar_area,
+            &mut ScrollbarState::new(app.max_scroll+1).position(app.scroll),
+        );
+    } else {
+        // All content visible, render paragraph in full inner_area without scrollbar
+        let paragraph = Paragraph::new(app.last_error.clone())
+            .block(Block::default().borders(Borders::NONE))
+            .wrap(Wrap { trim: true })
+            .scroll((0, 0));  // No scroll needed
+
+        f.render_widget(paragraph, inner_area);
+    }
+}
+
 fn draw_select_realm(f: &mut Frame, app: &mut App, size: Rect, tips : bool) {
     let mut block = Block::default()
         .borders(Borders::ALL)
@@ -32,7 +95,7 @@ fn draw_select_realm(f: &mut Frame, app: &mut App, size: Rect, tips : bool) {
         .title("Select Realm");
     
     if tips{
-        block = block.title(Title::from(Line::from(vec!["Esc".red(), DOT.into(), "↑↓".red(), DOT.into(), "Select".into(), "↵".red(), DOT.into(), "N".red(), "ew".into()]))
+        block = block.title(Title::from(Line::from(vec!["↑↓".red(), DOT.into(), "Select".into(), "↵".red(), DOT.into(), "N".red(), "ew".into(), DOT.into(), "Esc".red(),]))
             .position(widgets::block::Position::Bottom).alignment(Alignment::Right));
     }
 
@@ -69,7 +132,10 @@ fn draw_password_prompt(f: &mut Frame, app: &mut App, size: Rect) {
     let block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .title(app.realm_list[app.realm_selected].as_str());
+        .title(app.realm_list[app.realm_selected].as_str())
+        .title(Title::from(Line::from(vec!["Try".into(), "↵".red(), DOT.into(), "Esc".red(),]))
+            .position(widgets::block::Position::Bottom).alignment(Alignment::Right));
+
     f.render_widget(Clear, area); // clear the background
     f.render_widget(&block, area);
 
@@ -114,7 +180,7 @@ fn draw_new_realm_form(f: &mut Frame, app: &mut App, size: Rect) {
     let available_width = realm_inner.width as usize;
 
     let name_full = if app.nrf_selected_field == 0 { app.nrf_name.clone() + "_" } else { app.nrf_name.clone() };
-    let password_full = if app.nrf_selected_field == 1 { "*".repeat(app.nrf_form_password.len()) + "_" } else { "*".repeat(app.nrf_form_password.len()) };
+    let password_full = if app.nrf_selected_field == 1 { "*".repeat(app.nrf_password.len()) + "_" } else { "*".repeat(app.nrf_password.len()) };
 
     let realm_lines = vec![
         Line::from(""),
@@ -211,7 +277,7 @@ fn draw_dashboard(f: &mut Frame, app: &mut App, size: Rect) {
         .iter()
         .enumerate()
         .map(|(i, item)| {
-            let style = if i == app.dashboard_selected_static && matches!(app.dashboard_focus, DashboardFocus::StaticOption) {
+            let style = if i == app.dashboard_selected_static && matches!(app.dashboard_select, DashboardSelect::StaticOption) {
                 Style::default().fg(Color::Black).bg(Color::White)
             } else {
                 Style::default()
@@ -222,15 +288,15 @@ fn draw_dashboard(f: &mut Frame, app: &mut App, size: Rect) {
 
     let static_list = List::new(static_items)
         .block(Block::default().borders(Borders::NONE))
-        .highlight_style(if matches!(app.dashboard_focus, DashboardFocus::StaticOption) {
+        .highlight_style(if matches!(app.dashboard_select, DashboardSelect::StaticOption) {
             Style::default().add_modifier(Modifier::BOLD)
         } else {
             Style::default()
         })
-        .highlight_symbol(if matches!(app.dashboard_focus, DashboardFocus::StaticOption) { "> " } else { "" });
+        .highlight_symbol(if matches!(app.dashboard_select, DashboardSelect::StaticOption) { "> " } else { "" });
 
     let mut static_state = ListState::default();
-    if matches!(app.dashboard_focus, DashboardFocus::StaticOption) {
+    if matches!(app.dashboard_select, DashboardSelect::StaticOption) {
         static_state.select(Some(app.dashboard_selected_static));
     }
 
@@ -242,30 +308,30 @@ fn draw_dashboard(f: &mut Frame, app: &mut App, size: Rect) {
     f.render_widget(cert_block, left_chunks[1]);
 
     let cert_items: Vec<ListItem> = app
-        .dashboard_cert_list
+        .current_realm.as_ref().unwrap().certs
         .iter()
         .enumerate()
         .map(|(i, item)| {
-            let style = if i == app.dashboard_selected_cert && matches!(app.dashboard_focus, DashboardFocus::CertList) {
+            let style = if i == app.dashboard_selected_cert && matches!(app.dashboard_select, DashboardSelect::CertList) {
                 Style::default().fg(Color::Black).bg(Color::White)
             } else {
                 Style::default()
             };
-            ListItem::new(item.as_str()).style(style)
+            ListItem::new(item.get_subject_name().unwrap()).style(style)
         })
         .collect();
 
     let cert_list = List::new(cert_items)
         .block(Block::default().borders(Borders::NONE))
-        .highlight_style(if matches!(app.dashboard_focus, DashboardFocus::CertList) {
+        .highlight_style(if matches!(app.dashboard_select, DashboardSelect::CertList) {
             Style::default().add_modifier(Modifier::BOLD)
         } else {
             Style::default()
         })
-        .highlight_symbol(if matches!(app.dashboard_focus, DashboardFocus::CertList) { "> " } else { "" });
+        .highlight_symbol(if matches!(app.dashboard_select, DashboardSelect::CertList) { "> " } else { "" });
 
     let mut cert_state = ListState::default();
-    if matches!(app.dashboard_focus, DashboardFocus::CertList) {
+    if matches!(app.dashboard_select, DashboardSelect::CertList) {
         cert_state.select(Some(app.dashboard_selected_cert));
     }
 
@@ -276,10 +342,8 @@ fn draw_dashboard(f: &mut Frame, app: &mut App, size: Rect) {
     let right_inner = right_block.inner(chunks[1]);
     f.render_widget(right_block, chunks[1]);
 
-    let paragraph = Paragraph::new("Content")
-        .block(Block::default().borders(Borders::NONE))
-        .alignment(Alignment::Center);
-    f.render_widget(paragraph, right_inner);
+    // call here generate_dashboard_content
+    f.render_widget(generate_dashboard_content(app), right_inner);
 }
 
 /// helper function to create a popup rect with minimum size and percentage
@@ -303,4 +367,54 @@ fn truncate_with_ellipsis(s: &str, available_width: usize, text_size: usize) -> 
 
     }
 
+}
+
+fn generate_dashboard_content(app: &mut App) -> impl Widget{
+    // dynamically fill the content (right box) of dashboard depending of the current selection
+    match app.dashboard_select {
+        DashboardSelect::StaticOption => {
+            match app.dashboard_selected_static {
+                0 => {
+                    return Paragraph::new(app.current_realm.as_ref().unwrap().ca.get_info_txt().unwrap())
+                        .block(Block::default().borders(Borders::NONE))
+                        .alignment(Alignment::Center);
+                },
+                1 => {
+                    return Paragraph::new("Static1")
+                        .block(Block::default().borders(Borders::NONE))
+                        .alignment(Alignment::Center);
+                },
+                2 => {
+                    return Paragraph::new("Static2")
+                        .block(Block::default().borders(Borders::NONE))
+                        .alignment(Alignment::Center);
+                },
+                3 => {
+                    return Paragraph::new("Static3")
+                        .block(Block::default().borders(Borders::NONE))
+                        .alignment(Alignment::Center);
+                },
+                _ => {
+                    return Paragraph::new("Static_shouldneverappear")
+                        .block(Block::default().borders(Borders::NONE))
+                        .alignment(Alignment::Center);
+                },
+            }
+        }
+        DashboardSelect::CertList => {
+            match app.dashboard_selected_static {
+                0 => {
+                    return Paragraph::new("Cert0")
+                        .block(Block::default().borders(Borders::NONE))
+                        .alignment(Alignment::Center);
+                },
+                _ => {
+                    return Paragraph::new("Cert_If_List_Empty")
+                        .block(Block::default().borders(Borders::NONE))
+                        .alignment(Alignment::Center);
+                }, // appear if list empty
+            }
+        }
+    };
+    
 }

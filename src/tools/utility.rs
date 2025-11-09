@@ -107,8 +107,13 @@ pub fn create_folder(path: &Path, permissions: u32) -> Result<(), Box<dyn std::e
     Ok(())
 }
 
-pub fn write_to_file(filepath: &Path, data: &[u8], permissions: u32) -> Result<(), Box<dyn std::error::Error>> {
-    // permissions exemple : 0o600
+pub fn write_to_file(filepath: &Path, data: &[u8], permissions: u32, override_existing: bool) -> Result<(), Box<dyn std::error::Error>> {
+    
+    // Check for existing file if not overriding
+    if !override_existing && filepath.exists() {
+        return Err(Box::from("File already exists"));
+    }
+
     // Open or create the file
     let mut file = File::create(&filepath)?;
     file.write_all(data)?;

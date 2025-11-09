@@ -7,9 +7,11 @@ use std::net::IpAddr;
 use std::str;
 use rand::Rng;
 
+use bincode;
+
 use super::utility::{FSItemType, list_in_path, CA_VAULT, resolve_path};
 
-#[derive(Debug)]
+#[derive(bincode::Encode, bincode::Decode, Debug, Clone)]
 pub enum CertType{
     Server,
     Client,
@@ -18,13 +20,14 @@ pub enum CertType{
     Unknown
 }
 
+#[derive(bincode::Encode, bincode::Decode, Debug, Clone)]
 pub enum KeySize{
     Size1024,
     Size2048,
     Size4096
 }
 
-#[derive(Debug)]
+#[derive(bincode::Encode, bincode::Decode, Debug, Clone)]
 pub struct Cert {
     pub cert_type: CertType,
     pub cert: String,
@@ -64,7 +67,13 @@ impl Cert {
     // Utility
     pub fn get_info_txt(&self) -> Result<String, Box<dyn std::error::Error>> {
         let cert = X509::from_pem(self.cert.as_bytes())?;
-        return Ok(String::from_utf8(cert.to_text()?)?);
+        let raw = String::from_utf8(cert.to_text()?)?;
+        let trimmed_raw: String = raw
+            .lines()
+            .map(|line| line.trim_start())
+            .collect::<Vec<&str>>()
+            .join("\n");
+        return Ok(trimmed_raw);
     }
     
     pub fn get_subject_name(&self) -> Result<String, Box<dyn std::error::Error>> {
@@ -93,7 +102,7 @@ impl Cert {
 
 
 
-#[derive(Debug)]
+#[derive(bincode::Encode, bincode::Decode, Debug, Clone)]
 pub struct Realm {
     pub name: String,
     pub ca: Cert,
@@ -102,7 +111,7 @@ pub struct Realm {
 }
 
 impl Realm {
-    pub fn new(name: &'static str, ca_key_size: KeySize, ca_common_name: &str, ca_organization: &str, ca_country: &str) -> Result<Self, Box<dyn std::error::Error>>{
+    pub fn new(name: &str, ca_key_size: KeySize, ca_common_name: &str, ca_organization: &str, ca_country: &str) -> Result<Self, Box<dyn std::error::Error>>{
         let ca = generate_new_ca(ca_key_size, ca_common_name, ca_organization, ca_country)?;
         let certs: Vec<Cert> = Vec::new();
         let resp = Realm{
@@ -238,6 +247,11 @@ impl Realm {
             cert,
             private_key
         };
+
+        if ! new_cert.is_signed_by(&self.ca)?{
+            return Err(Box::from("Is not signed by the good CA or is not signed by any"));
+        }
+
         self.certs.push(new_cert);
         
         // TODO what about last_serial_number update ?
@@ -257,7 +271,7 @@ impl Realm {
         let vaults = list_in_path(&resolve_path(CA_VAULT), FSItemType::Files)?;
         let mut formatted: Vec<String> = vaults
             .iter()
-            .map(|s| s.trim_end_matches(".dat").replace("_", "."))
+            .map(|s| s.trim_end_matches(".dat").into())
             .collect();
         formatted.sort();
         Ok(formatted)
@@ -266,7 +280,6 @@ impl Realm {
 
 fn generate_new_ca(key_size : KeySize, common_name : &str, organization : &str, country : &str) -> Result<Cert, Box<dyn std::error::Error>>{
     //  generate a new CA
-
     // Generate CA private +pub key
     // Generate private key
     let rsa_size = match key_size {
@@ -277,14 +290,14 @@ fn generate_new_ca(key_size : KeySize, common_name : &str, organization : &str, 
     let ca_key = Rsa::generate(rsa_size)?;
     let ca_private_key = PKey::from_rsa(ca_key)?;
     let public_key_bytes = ca_private_key.public_key_to_pem()?;
-
+    
     // Create self-signed CA certificate
     let mut name = X509NameBuilder::new()?;
+    name.append_entry_by_text("CN", common_name)?;
     name.append_entry_by_text("C", country)?;
     name.append_entry_by_text("O", organization)?;
-    name.append_entry_by_text("CN", common_name)?;
     let name = name.build();
-
+    
     let mut ca_cert_builder = X509Builder::new()?;
     ca_cert_builder.set_version(2)?; // Version 3
     
@@ -292,7 +305,7 @@ fn generate_new_ca(key_size : KeySize, common_name : &str, organization : &str, 
     let random_number: u32 = rng.random::<u32>();
     ca_cert_builder.set_serial_number(openssl::bn::BigNum::from_u32(random_number)?.to_asn1_integer()?.as_ref())?;
     ca_cert_builder.set_not_before(Asn1Time::days_from_now(0)?.as_ref())?;
-
+    
     ca_cert_builder.set_not_after(Asn1Time::days_from_now(3650)?.as_ref())?;
     ca_cert_builder.set_subject_name(&name)?;
     ca_cert_builder.set_pubkey(&ca_private_key)?;
@@ -306,7 +319,7 @@ fn generate_new_ca(key_size : KeySize, common_name : &str, organization : &str, 
         der.extend_from_slice(&hash); // Add the hash
         der
     };
-
+    
     let authority_key_identifier_der = {
         let mut der = Vec::new();
         der.extend_from_slice(&[0x30, 0x16, 0x80]); // OCTET STRING
@@ -314,7 +327,8 @@ fn generate_new_ca(key_size : KeySize, common_name : &str, organization : &str, 
         der.extend_from_slice(&hash); // Add the authority (myself) hash
         der
     };
-
+    
+    
     ca_cert_builder.append_extension(create_extension(&"2.5.29.14", &subject_key_identifier_der, false)?)?; // X509v3 Subject Key Identifier: hash
     ca_cert_builder.append_extension(create_extension(&"2.5.29.35",&authority_key_identifier_der, false)?)?; // X509v3 Authority Key Identifier: keyid:always
     
@@ -324,15 +338,15 @@ fn generate_new_ca(key_size : KeySize, common_name : &str, organization : &str, 
     ca_cert_builder.append_extension(create_extension(&"2.5.29.37", &[0x30, 0x14, 0x06, 0x08, 0x2B, 0x06, 0x01, 0x05, 0x05, 0x07, 0x03, 0x01, 0x06, 0x08, 0x2B, 0x06, 0x01, 0x05, 0x05, 0x07, 0x03, 0x02], false)?)?; // extendedKeyUsage
     
     ca_cert_builder.sign(&ca_private_key, openssl::hash::MessageDigest::sha256())?;
-
-
+    
+    
     let ca_cert = ca_cert_builder.build();
-
+    
     // Save CA private key and certificate to struct
     let  ca_cert_text: &Vec<u8> = &ca_cert.to_pem()?;
     let ca_private_text : &Vec<u8>  = &ca_private_key.private_key_to_pem_pkcs8()?;
-
-
+    
+    
     let result = Cert {
         cert_type: CertType::Ca,
         cert: str::from_utf8(ca_cert_text)?.to_string(),

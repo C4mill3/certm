@@ -8,20 +8,16 @@ use bincode::{self, config::Configuration};
 
 use super::utility::{sanitize_name, resolve_path, write_to_file, CA_VAULT};
 
+use super::certs_manager::Realm;
+
 type Aes256Cbc = Cbc<Aes256, Pkcs7>;
 
 const BINCODE_CONFIG: Configuration<BigEndian> = bincode::config::standard()
     .with_big_endian()
     .with_variable_int_encoding();
 
-#[derive(Debug)] // TODO Needed for printing the struct (for demonstration only)
-#[derive(bincode::Encode, bincode::Decode)] //Automatically implement Encode and Decode traits
-pub struct MyData {
-    pub name: String,
-    pub age: u8,
-}
 
-pub fn encrypt_to_file (name : &str, password: &str, data : &MyData) -> Result<(), Box<dyn std::error::Error>> {
+pub fn encrypt_to_file (name : &str, password: &str, data : &Realm, override_existing: bool) -> Result<(), Box<dyn std::error::Error>> {
 
 
     // serialize struct to bytes
@@ -44,11 +40,11 @@ pub fn encrypt_to_file (name : &str, password: &str, data : &MyData) -> Result<(
     // Write to file (CA_VAULT + name.dat)
     let path_build = &resolve_path(CA_VAULT)
     .join(format!("{}.dat",sanitize_name(name)));
-    write_to_file(&path_build, &combined_data, 0o600)?;
+    write_to_file(&path_build, &combined_data, 0o600, override_existing)?;
     Ok(())
 }
 
-pub fn decrypt_from_file (name : &str, password: &str) -> Result<MyData, Box<dyn std::error::Error>> {
+pub fn decrypt_from_file (name : &str, password: &str) -> Result<Realm, Box<dyn std::error::Error>> {
 
     // read file
     let path_build = &resolve_path(CA_VAULT)
@@ -61,7 +57,14 @@ pub fn decrypt_from_file (name : &str, password: &str) -> Result<MyData, Box<dyn
     let key = Sha256::digest(password);
     let cipher = Aes256Cbc::new_from_slices(&key, extracted_iv)?; // Cipher "tool" for crypto operations
     // decrypt and deserialize data
-    let decrypted_data = cipher.decrypt_vec(encrypted_data)?;
+    let try_decrypted_data = cipher.decrypt_vec(encrypted_data);
+
+    let decrypted_data = match try_decrypted_data {
+        Ok(d) => d,
+        Err(_) => {
+            return Err("Invalid password or file".into());
+        }
+    };
 
     let deserialize = bincode::decode_from_slice(&decrypted_data, BINCODE_CONFIG);
     let resp = match deserialize{

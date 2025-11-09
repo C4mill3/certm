@@ -1,5 +1,3 @@
-// front/app.rs
-
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
     execute,
@@ -13,10 +11,12 @@ use std::io;
 
 // Backend
 use crate::tools;
-use tools::certs_manager::{Realm, Cert};
+use tools::certs_manager::{Realm, Cert, KeySize};
+use tools::mycrypt::{encrypt_to_file, decrypt_from_file};
 
 #[derive(Clone)]
 pub enum AppState {
+    ErrorPrompt,
     SelectRealm,
     PasswordPrompt,
     NewRealmForm,
@@ -24,15 +24,16 @@ pub enum AppState {
 }
 
 #[derive(Clone)]
-pub enum DashboardFocus {
+pub enum DashboardSelect {
     StaticOption,
     CertList,
-    Content,
 }
 
 #[derive(Clone)]
 pub struct App {
     pub state: AppState,
+    pub scroll: usize,
+    pub max_scroll: usize,
 
     // SelectRealm
     pub realm_list: Vec<String>,
@@ -40,23 +41,25 @@ pub struct App {
     
     // PasswordPrompt
     pub password_text: String,
-    pub password_success: bool,
+    pub current_realm: Option<Realm>,
     
     // Dashboard
     pub dashboard_static_menu: Vec<String>,
-    pub dashboard_cert_list: Vec<String>,
     pub dashboard_selected_static: usize,
     pub dashboard_selected_cert: usize,
-    pub dashboard_focus: DashboardFocus,
+    pub dashboard_select: DashboardSelect,
+    pub dashboard_on_content: bool, // is focus on content box
 
     // Fields for NewRealmForm (nrf)
     pub nrf_selected_field: usize, // 0: Name, 1: Password, 2: Common Name, 3: Organization, 4: Country, 5: Key Size, 6: Cancel, 7: Create
     pub nrf_name: String,
-    pub nrf_form_password: String,
+    pub nrf_password: String,
     pub nrf_ca_common_name: String,
     pub nrf_ca_organization: String,
     pub nrf_ca_country: String,
     pub nrf_ca_key_size_index: usize, // 0: 1024, 1: 2048, 2: 4096
+    pub last_error: String,
+    pub error_fallback_state: AppState,
 }
 
 impl App {
@@ -67,40 +70,37 @@ impl App {
             "CA Info".to_string(),
             "Create Cert".to_string(),
             "Import Cert".to_string(),
+            "Sign using CSR".to_string(),
         ];
-        let dashboard_cert_list = vec![
-            "cert1".to_string(),
-            "cert2".to_string(),
-            "cert3".to_string(),
-            "cert4".to_string(),
-            "cert5".to_string(),
-            "cert6".to_string(),
-            "cert7".to_string(),
-            "cert8".to_string(),
-            "cert9".to_string(),
-            "cert10".to_string(),
-        ];
+
         Self {
             state: AppState::SelectRealm,
+            scroll: 0,
+            max_scroll: 0,
+
             realm_list,
             realm_selected: 0,
             
             password_text: String::new(),
-            password_success: false,
+            current_realm: None,
 
             dashboard_static_menu,
-            dashboard_cert_list,
             dashboard_selected_static: 0,
             dashboard_selected_cert: 0,
-            dashboard_focus: DashboardFocus::StaticOption,
+            dashboard_select: DashboardSelect::StaticOption,
+            dashboard_on_content: false,
 
             nrf_selected_field: 0,
             nrf_name: String::new(),
-            nrf_form_password: String::new(),
+            nrf_password: String::new(),
             nrf_ca_common_name: String::new(),
             nrf_ca_organization: String::new(),
             nrf_ca_country: String::new(),
             nrf_ca_key_size_index: 2, // Default to 4096
+            
+            last_error: String::new(),
+            error_fallback_state:AppState::SelectRealm, // Default
+            
         }
     }
 
@@ -118,11 +118,19 @@ impl App {
             
             if let Event::Key(key) = event::read()? {
                 match self.state {
+                    AppState::ErrorPrompt => match key.code {
+                        KeyCode::Up => self.scroll_up(),
+                        KeyCode::Down => self.scroll_down(),
+                        KeyCode::Home => self.scroll_fast_up(),
+                        KeyCode::End => self.scroll_fast_down(),
+                        KeyCode::Esc => self.state = self.error_fallback_state.clone(),
+                        _ => {}
+                    },
                     AppState::SelectRealm => match key.code {
+                        KeyCode::Up => self.realm_previous(),
                         KeyCode::Down => self.realm_next(),
                         KeyCode::Home => self.realm_fast_previous(),
                         KeyCode::End => self.realm_fast_next(),
-                        KeyCode::Up => self.realm_previous(),
                         KeyCode::Enter => self.realm_select_action(),
                         KeyCode::Char('n') | KeyCode::Char('N') => self.state = AppState::NewRealmForm,
                         KeyCode::Esc => running = false,
@@ -159,11 +167,13 @@ impl App {
                         _ => {}
                     },
                     AppState::Dashboard => match key.code {
-                        KeyCode::Tab => self.dashboard_next_focus(),
-                        KeyCode::BackTab => self.dashboard_previous_focus(),
-                        KeyCode::Down => self.dashboard_next_item(),
-                        KeyCode::Up => self.dashboard_previous_item(),
-                        KeyCode::Esc => {self.realm_list = Realm::list().unwrap(); self.state = AppState::SelectRealm}, // refresh list, then switch
+                        KeyCode::Tab | KeyCode::BackTab=> self.dashboard_next_focus(),
+                        KeyCode::Down => self.dashboard_down(),
+                        KeyCode::Up => self.dashboard_up(),
+                        KeyCode::Enter => self.dashboard_select(),
+                        KeyCode::Left => self.dashboard_left(),
+                        KeyCode::Right => self.dashboard_right(),
+                        KeyCode::Esc => self.dashboard_escape(),
                         _ => {}
                     },
                 }
@@ -182,6 +192,7 @@ impl App {
         Ok(())
     }
 
+    // Select Realm
     pub fn realm_next(&mut self) {
         if self.realm_selected < self.realm_list.len().saturating_sub(1) {
             self.realm_selected += 1;
@@ -207,23 +218,71 @@ impl App {
             self.realm_selected = self.realm_selected.saturating_sub(10);
         }
     }
+    
+    pub fn back_to_select_realm(&mut self) {
+        self.current_realm = None;
+        self.realm_list = Realm::list().unwrap();
+        self.state = AppState::SelectRealm
+    }
 
     pub fn realm_select_action(&mut self) {
-        self.state = AppState::PasswordPrompt;
         self.password_text.clear();
+        self.state = AppState::PasswordPrompt;
     }
-
-    pub fn back_to_select_realm(&mut self) {
-        self.state = AppState::SelectRealm;
-    }
-
+    
+    // Password
     pub fn password_submit(&mut self) {
-        self.password_success = true;
-        self.state = AppState::Dashboard;
+        let filename = &self.realm_list[self.realm_selected];
+        let realm_decode = decrypt_from_file(&filename, &self.password_text);
+        match realm_decode {
+            Ok(realm) => {
+                self.current_realm = Some(realm);
+                self.state=AppState::Dashboard
+            },
+            Err(e) => {
+                self.password_text.clear();
+                self.switch_to_error(e.to_string(), AppState::PasswordPrompt);
+            },
+        }
     }
 
-    // FORM NEW REALM
 
+    //Global Scroll
+    pub fn scroll_up(&mut self){
+        self.scroll = self.scroll.saturating_sub(1)
+    }
+
+    pub fn scroll_fast_up(&mut self){
+        self.scroll = self.scroll.saturating_sub(10)
+    }
+
+
+    pub fn scroll_down(&mut self){
+        if self.scroll < self.max_scroll {
+            self.scroll += 1;
+        }
+    }
+
+    pub fn scroll_fast_down(&mut self){
+        if self.scroll < self.max_scroll {
+            self.scroll += 10;
+        }else {
+            self.scroll = self.max_scroll;
+        }
+    }
+
+    //Error
+    pub fn switch_to_error(&mut self, error: String, fallback_state: AppState){
+        self.error_fallback_state = fallback_state;
+        self.last_error = error;
+        
+        self.scroll=0;
+        self.state = AppState::ErrorPrompt;
+
+    }
+
+    
+    // New Realm Form
     pub fn nrf_next_field(&mut self) {
         if self.nrf_selected_field < 7 {
             self.nrf_selected_field += 1;
@@ -241,38 +300,54 @@ impl App {
         match self.nrf_selected_field {
             6 => {
                 // Create realm (placeholder - implement based on your backend)
-                if self.nrf_create_realm() {
-                    self.realm_list = Realm::list().unwrap(); // Refresh list
-                    self.state = AppState::SelectRealm;
-                    self.nrf_clear_form();
+                match self.nrf_create_realm() {
+                    Ok(_) => {
+                        self.realm_list = Realm::list().unwrap(); // Refresh list
+                        self.state = AppState::SelectRealm;
+                        self.nrf_clear_form();
+                    },
+                    Err(e) => {
+                        self.switch_to_error(e.to_string(), AppState::NewRealmForm);
+                    },
                 }
             }
             7 => { // Cancel
                 self.nrf_clear_form();
                 self.back_to_select_realm();
             }
-            _ => {} // Do nothing for input fields
+            _ => {
+                self.nrf_next_field()
+            }
         }
     }
 
     pub fn nrf_input_char(&mut self, c: char) {
         let field = match self.nrf_selected_field {
             0 => &mut self.nrf_name,
-            1 => &mut self.nrf_form_password,
+            1 => &mut self.nrf_password,
             2 => &mut self.nrf_ca_common_name,
             3 => &mut self.nrf_ca_organization,
             4 => &mut self.nrf_ca_country,
             _ => return, // Not an input field
         };
-        if field.len() < 255 {
-            field.push(c);
+        // COUNTRY have to be == 2CHAR
+        if self.nrf_selected_field == 4 {
+            if field.len() < 2 {
+                field.push(c.to_ascii_uppercase());
+            }
+        }else{ // the other
+            if field.len() < 255 {
+                field.push(c);
+            }
+
         }
+
     }
 
     pub fn nrf_backspace(&mut self) {
         let field = match self.nrf_selected_field {
             0 => &mut self.nrf_name,
-            1 => &mut self.nrf_form_password,
+            1 => &mut self.nrf_password,
             2 => &mut self.nrf_ca_common_name,
             3 => &mut self.nrf_ca_organization,
             4 => &mut self.nrf_ca_country,
@@ -291,7 +366,7 @@ impl App {
 
     pub fn nrf_clear_form(&mut self) {
         self.nrf_name.clear();
-        self.nrf_form_password.clear();
+        self.nrf_password.clear();
         self.nrf_ca_common_name.clear();
         self.nrf_ca_organization.clear();
         self.nrf_ca_country.clear();
@@ -299,71 +374,105 @@ impl App {
         self.nrf_selected_field = 0;
     }
 
-    // Placeholder for creating a realm - implement this based on your backend
-    
-    pub fn nrf_get_key_size(&self) -> u16 {
+    pub fn nrf_get_key_size(&self) -> KeySize {
         match self.nrf_ca_key_size_index {
-            0 => 1024,
-            1 => 2048,
-            2 => 4096,
-            _ => 2048,
+            0 => KeySize::Size1024,
+            1 => KeySize::Size2048,
+            2 => KeySize::Size4096,
+            _ => KeySize::Size2048,
         }
     }
 
-    pub fn nrf_create_realm(&self) -> bool {
-        let _ = self.nrf_get_key_size();
-        // Example: Call your backend function here
-        // Realm::create(&self.name, &self.form_password, &self.common_name, &self.organization, &self.country, self.get_key_size()).is_ok()
-        true // Placeholder success
+    pub fn nrf_create_realm(&self) -> Result<(), Box<dyn std::error::Error>> {
+        //BACKEND
+        // Create the realm using settings, then create the vault if not already existing
+        let key_size = self.nrf_get_key_size();
+
+        
+        let new_realm= Realm::new(&self.nrf_name, key_size, &self.nrf_ca_common_name, &self.nrf_ca_organization, &self.nrf_ca_country)?;
+        
+        return encrypt_to_file(&self.nrf_name, &self.nrf_password, &new_realm, false);
     }
 
-
-    // DASHBOARD
+    // Dashboard
     pub fn dashboard_next_focus(&mut self) {
-        self.dashboard_focus = match self.dashboard_focus {
-            DashboardFocus::StaticOption => DashboardFocus::CertList,
-            DashboardFocus::CertList => DashboardFocus::Content,
-            DashboardFocus::Content => DashboardFocus::StaticOption,
-        };
-    }
-
-    pub fn dashboard_previous_focus(&mut self) {
-        self.dashboard_focus = match self.dashboard_focus {
-            DashboardFocus::StaticOption => DashboardFocus::Content,
-            DashboardFocus::CertList => DashboardFocus::StaticOption,
-            DashboardFocus::Content => DashboardFocus::CertList,
-        };
-    }
-
-    pub fn dashboard_next_item(&mut self) {
-        match self.dashboard_focus {
-            DashboardFocus::StaticOption => {
-                if self.dashboard_selected_static < self.dashboard_static_menu.len().saturating_sub(1) {
-                    self.dashboard_selected_static += 1;
-                }
-            }
-            DashboardFocus::CertList => {
-                if self.dashboard_selected_cert < self.dashboard_cert_list.len().saturating_sub(1) {
-                    self.dashboard_selected_cert += 1;
-                }
-            }
-            DashboardFocus::Content => {}
+        if ! self.dashboard_on_content {
+            self.dashboard_select = match self.dashboard_select {
+                DashboardSelect::StaticOption => DashboardSelect::CertList,
+                DashboardSelect::CertList => DashboardSelect::StaticOption,
+            };
         }
     }
 
-    pub fn dashboard_previous_item(&mut self) {
-        match self.dashboard_focus {
-            DashboardFocus::StaticOption => {
-                if self.dashboard_selected_static > 0 {
-                    self.dashboard_selected_static = self.dashboard_selected_static.saturating_sub(1);
+
+    pub fn dashboard_down(&mut self) {
+        if ! self.dashboard_on_content {
+            match self.dashboard_select {
+                DashboardSelect::StaticOption => {
+                    if self.dashboard_selected_static < self.dashboard_static_menu.len().saturating_sub(1) {
+                        self.dashboard_selected_static += 1;
+                    }
+                }
+                DashboardSelect::CertList => {
+                    let realm_len = self.current_realm.as_ref().map(|realm| realm.certs.len()).unwrap_or(0);
+                    if self.dashboard_selected_cert < realm_len.saturating_sub(1) {
+                        self.dashboard_selected_cert += 1;
+                    }
                 }
             }
-            DashboardFocus::CertList => {
-                if self.dashboard_selected_cert > 0 {
-                    self.dashboard_selected_cert = self.dashboard_selected_cert.saturating_sub(1);
+        }
+    }
+
+    pub fn dashboard_up(&mut self) {
+        if ! self.dashboard_on_content {
+            match self.dashboard_select {
+                DashboardSelect::StaticOption => {
+                    if self.dashboard_selected_static > 0 {
+                        self.dashboard_selected_static = self.dashboard_selected_static.saturating_sub(1);
+                    }
+                }
+                DashboardSelect::CertList => {
+                    if self.dashboard_selected_cert > 0 {
+                        self.dashboard_selected_cert = self.dashboard_selected_cert.saturating_sub(1);
+                    }
                 }
             }
-            DashboardFocus::Content => {}
+        }
+    }
+
+    pub fn dashboard_right(&mut self) {
+        if ! self.dashboard_on_content{
+            self.dashboard_on_content = true;
+        }
+    }
+
+    pub fn dashboard_left(&mut self) {
+        if self.dashboard_on_content{
+            self.dashboard_on_content = false;
+        }
+    }
+
+    pub fn dashboard_select(&mut self) {
+        if ! self.dashboard_on_content{
+            self.dashboard_on_content = true;
+        }else{
+            match self.dashboard_select {
+                DashboardSelect::StaticOption => {
+                    //TODO
+                }
+                DashboardSelect::CertList => {
+                    //TODO
+                }
+            }
+        }
+    }
+
+    pub fn dashboard_escape(&mut self) {
+        if self.dashboard_on_content{
+            self.dashboard_on_content = false;
+        }else{
+            self.current_realm = None;
+            self.back_to_select_realm();
         }
     }
 }

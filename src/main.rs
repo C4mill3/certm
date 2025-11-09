@@ -12,10 +12,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut app = App::new();
     let res = app.run();
 
-    if app.password_success {
-        println!("Success");
-    }
-
     if let Err(err) = res {
         println!("{:?}", err)
     }
