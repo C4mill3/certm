@@ -30,9 +30,7 @@ fn draw_error_prompt(f: &mut Frame, app: &mut App, size: Rect) {
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
         .title("Error")
-        .title(Title::from(Line::from(vec!["↑↓".red(), DOT.into(), "Esc".red()]))
-            .position(widgets::block::Position::Bottom)
-            .alignment(Alignment::Right));
+        .title_bottom(Line::from(vec!["↑↓".red(), DOT.into(), "Esc".red()]).right_aligned());
 
     f.render_widget(Clear, area); // clear the background
     f.render_widget(&block, area);
@@ -55,8 +53,10 @@ fn draw_select_realm(f: &mut Frame, app: &mut App, size: Rect, tips : bool) {
         .title("Select Realm");
     
     if tips{
-        block = block.title(Title::from(Line::from(vec!["↑↓".red(), DOT.into(), "Select".into(), "↵".red(), DOT.into(), "N".red(), "ew".into(), DOT.into(), "Esc".red(),]))
-            .position(widgets::block::Position::Bottom).alignment(Alignment::Right));
+        block = block.title_bottom(Line::from(vec!["↑↓".red(), DOT.into(),
+            "Select".into(), "↵".red(), DOT.into(),
+            "N".red(), "ew".into(), DOT.into(),
+            "Esc".red(),]).right_aligned());
     }
 
     let inner_area = block.inner(size);
@@ -93,8 +93,8 @@ fn draw_password_prompt(f: &mut Frame, app: &mut App, size: Rect) {
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
         .title(app.realm_list[app.realm_selected].as_str())
-        .title(Title::from(Line::from(vec!["Try".into(), "↵".red(), DOT.into(), "Esc".red(),]))
-            .position(widgets::block::Position::Bottom).alignment(Alignment::Right));
+        .title_bottom(Line::from(vec!["Try".into(), "↵".red(), DOT.into(),
+            "Esc".red(),]).right_aligned());
 
     f.render_widget(Clear, area); // clear the background
     f.render_widget(&block, area);
@@ -207,7 +207,7 @@ fn draw_dashboard(f: &mut Frame, app: &mut App, size: Rect) {
     let block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .title(Title::from(app.realm_list[app.realm_selected].as_str()).alignment(Alignment::Center));
+        .title(Line::from(app.realm_list[app.realm_selected].as_str()).centered());
     let inner_area = block.inner(size);
     f.render_widget(block, size);
 
