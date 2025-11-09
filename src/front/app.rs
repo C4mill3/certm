@@ -70,7 +70,7 @@ impl App {
             "CA Info".to_string(),
             "Create Cert".to_string(),
             "Import Cert".to_string(),
-            "Sign using CSR".to_string(),
+            "Sign a CSR".to_string(),
         ];
 
         Self {
@@ -404,9 +404,41 @@ impl App {
         }
     }
 
+    pub fn dashboard_up(&mut self) {
+        if ! self.dashboard_on_content {
+            self.scroll=0; // reset scroll when changing view
+            match self.dashboard_select {
+                DashboardSelect::StaticOption => {
+                    if self.dashboard_selected_static > 0 {
+                        self.dashboard_selected_static = self.dashboard_selected_static.saturating_sub(1);
+                    }
+                }
+                DashboardSelect::CertList => {
+                    if self.dashboard_selected_cert > 0 {
+                        self.dashboard_selected_cert = self.dashboard_selected_cert.saturating_sub(1);
+                    }
+                }
+            }
+        }else{
+            match self.dashboard_select {
+                DashboardSelect::StaticOption => {
+                    match self.dashboard_selected_static {
+                        0 => self.scroll_up(), // Show CA
+                        _ => {}, //pass
+                    }
+
+                }
+                DashboardSelect::CertList => {
+                    
+                } // pass
+            }
+        }
+    }
+
 
     pub fn dashboard_down(&mut self) {
         if ! self.dashboard_on_content {
+            self.scroll=0; // reset scroll when changing view
             match self.dashboard_select {
                 DashboardSelect::StaticOption => {
                     if self.dashboard_selected_static < self.dashboard_static_menu.len().saturating_sub(1) {
@@ -420,22 +452,18 @@ impl App {
                     }
                 }
             }
-        }
-    }
-
-    pub fn dashboard_up(&mut self) {
-        if ! self.dashboard_on_content {
+        }else{
             match self.dashboard_select {
                 DashboardSelect::StaticOption => {
-                    if self.dashboard_selected_static > 0 {
-                        self.dashboard_selected_static = self.dashboard_selected_static.saturating_sub(1);
+                    match self.dashboard_selected_static {
+                        0 => self.scroll_down(), // Show CA
+                        _ => {}, //pass
                     }
+
                 }
                 DashboardSelect::CertList => {
-                    if self.dashboard_selected_cert > 0 {
-                        self.dashboard_selected_cert = self.dashboard_selected_cert.saturating_sub(1);
-                    }
-                }
+                    
+                } // pass
             }
         }
     }

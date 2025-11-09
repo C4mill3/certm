@@ -1,13 +1,13 @@
 use ratatui::{
-    Frame, Terminal, backend::CrosstermBackend, layout::{Alignment, Constraint, Direction, Layout, Rect}, style::{Color, Modifier, Style, Stylize}, symbols::DOT, text::Line, widgets::{self, Block, BorderType, Borders, Clear, List, ListItem, ListState, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Widget, Wrap, block::Title}
+    Frame, Terminal, backend::CrosstermBackend, layout::{Alignment, Constraint, Direction, Layout, Rect}, style::{Color, Modifier, Style, Stylize}, symbols::DOT, text::Line, widgets::{self, Block, BorderType, Borders, Clear, List, ListItem, ListState, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Widget, WidgetRef, Wrap, block::Title}
 };
 
 // Import App and related types from the app module
 use super::app::*;
-
+use super::mywidgets;
 
 pub fn ui(f: &mut Frame, app: &mut App) {
-    let size = f.size();
+    let size = f.area();
     match app.state {
         AppState::ErrorPrompt => draw_error_prompt(f, app, size),
         AppState::SelectRealm => draw_select_realm(f, app, size, true),
@@ -39,53 +39,13 @@ fn draw_error_prompt(f: &mut Frame, app: &mut App, size: Rect) {
 
     let inner_area = block.inner(area);
 
-    // Calculate content height for scrollbar
-    let content_width = inner_area.width as usize;  // Use full width if no scrollbar
-    let content_height = app.last_error.lines().map(|line| {
-        if line.len() <= content_width {
-            1
-        } else {
-            (line.len() + content_width - 1) / content_width
-        }
-    }).sum::<usize>();
 
-    let visible_height = inner_area.height as usize;
-    app.max_scroll = content_height.saturating_sub(visible_height);  // Set the global max scroll
 
-    if content_height > visible_height {
-        // Split for text and scrollbar
-        let chunks = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Min(1), Constraint::Length(1)])
-            .split(inner_area);
 
-        let text_area = chunks[0];
-        let scrollbar_area = chunks[1];
+    update_scroll(app, &inner_area, &app.last_error.clone());
+    let content = mywidgets::ScrollableParagraph::new(app.last_error.clone(), app.scroll, app.max_scroll);
+    content.render_ref(inner_area, f.buffer_mut());
 
-        let paragraph = Paragraph::new(app.last_error.clone())
-            .block(Block::default().borders(Borders::NONE))
-            .wrap(Wrap { trim: true })
-            .scroll((app.scroll as u16, 0));
-
-        f.render_widget(paragraph, text_area);
-
-        let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
-            .begin_symbol(Some("↑"))
-            .end_symbol(Some("↓"));
-        f.render_stateful_widget(
-            scrollbar,
-            scrollbar_area,
-            &mut ScrollbarState::new(app.max_scroll+1).position(app.scroll),
-        );
-    } else {
-        // All content visible, render paragraph in full inner_area without scrollbar
-        let paragraph = Paragraph::new(app.last_error.clone())
-            .block(Block::default().borders(Borders::NONE))
-            .wrap(Wrap { trim: true })
-            .scroll((0, 0));  // No scroll needed
-
-        f.render_widget(paragraph, inner_area);
-    }
 }
 
 fn draw_select_realm(f: &mut Frame, app: &mut App, size: Rect, tips : bool) {
@@ -343,7 +303,8 @@ fn draw_dashboard(f: &mut Frame, app: &mut App, size: Rect) {
     f.render_widget(right_block, chunks[1]);
 
     // call here generate_dashboard_content
-    f.render_widget(generate_dashboard_content(app), right_inner);
+    //f.render_widget(generate_dashboard_content(app), right_inner);
+    generate_dashboard_content(app, &right_inner).render_ref(right_inner, f.buffer_mut());
 }
 
 /// helper function to create a popup rect with minimum size and percentage
@@ -369,52 +330,72 @@ fn truncate_with_ellipsis(s: &str, available_width: usize, text_size: usize) -> 
 
 }
 
-fn generate_dashboard_content(app: &mut App) -> impl Widget{
+fn generate_dashboard_content(app: &mut App, inner_area: &Rect) ->  Box<dyn WidgetRef> {
     // dynamically fill the content (right box) of dashboard depending of the current selection
     match app.dashboard_select {
         DashboardSelect::StaticOption => {
             match app.dashboard_selected_static {
                 0 => {
-                    return Paragraph::new(app.current_realm.as_ref().unwrap().ca.get_info_txt().unwrap())
-                        .block(Block::default().borders(Borders::NONE))
-                        .alignment(Alignment::Center);
+                    let text = app.current_realm.as_ref().unwrap().ca.get_info_txt().unwrap();
+                    update_scroll(app, &inner_area, &text);
+                    return Box::new(mywidgets::ScrollableParagraph::new(text, app.scroll, app.max_scroll));
                 },
                 1 => {
-                    return Paragraph::new("Static1")
+                    return Box::new(Paragraph::new("Static1")
                         .block(Block::default().borders(Borders::NONE))
-                        .alignment(Alignment::Center);
+                        .alignment(Alignment::Center));
                 },
                 2 => {
-                    return Paragraph::new("Static2")
+                    return Box::new(Paragraph::new("Static2")
                         .block(Block::default().borders(Borders::NONE))
-                        .alignment(Alignment::Center);
+                        .alignment(Alignment::Center));
                 },
                 3 => {
-                    return Paragraph::new("Static3")
+                    return Box::new(Paragraph::new("Static3")
                         .block(Block::default().borders(Borders::NONE))
-                        .alignment(Alignment::Center);
+                        .alignment(Alignment::Center));
                 },
                 _ => {
-                    return Paragraph::new("Static_shouldneverappear")
+                    return Box::new(Paragraph::new("Static_shouldneverappear")
                         .block(Block::default().borders(Borders::NONE))
-                        .alignment(Alignment::Center);
+                        .alignment(Alignment::Center));
                 },
             }
         }
         DashboardSelect::CertList => {
             match app.dashboard_selected_static {
                 0 => {
-                    return Paragraph::new("Cert0")
+                    return Box::new(Paragraph::new("Cert0")
                         .block(Block::default().borders(Borders::NONE))
-                        .alignment(Alignment::Center);
+                        .alignment(Alignment::Center));
                 },
                 _ => {
-                    return Paragraph::new("Cert_If_List_Empty")
+                    return Box::new(Paragraph::new("Cert_If_List_Empty")
                         .block(Block::default().borders(Borders::NONE))
-                        .alignment(Alignment::Center);
+                        .alignment(Alignment::Center));
                 }, // appear if list empty
             }
         }
     };
     
+}
+
+fn update_scroll(app: &mut App, inner_area: &Rect, text: &String){
+    // Calculate scroll size
+    
+    // Calculate content height for scrollbar
+    let content_width = inner_area.width as usize;  // Use full width if no scrollbar
+    let content_height = text.lines().map(|line| {
+        if line.len() <= content_width {
+            1
+        } else {
+            (line.len() + content_width - 1) / content_width
+        }
+    }).sum::<usize>();
+
+    let visible_height = inner_area.height as usize;
+    app.max_scroll = content_height.saturating_sub(visible_height);  // Set the global max scroll
+    if app.scroll > app.max_scroll{ // because of resizing
+        app.scroll = app.max_scroll;
+    }
 }
