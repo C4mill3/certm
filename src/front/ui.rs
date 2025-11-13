@@ -139,14 +139,14 @@ fn draw_new_realm_form(f: &mut Frame, app: &mut App, size: Rect) {
     // Calculate available width for Realm fields
     let available_width = realm_inner.width as usize;
 
-    let name_full = if app.nrf_selected_field == 0 { app.nrf_name.clone() + "_" } else { app.nrf_name.clone() };
-    let password_full = if app.nrf_selected_field == 1 { "*".repeat(app.nrf_password.len()) + "_" } else { "*".repeat(app.nrf_password.len()) };
+    let name_full = if app.nrf_cursor == 0 { app.nrf_name.clone() + "_" } else { app.nrf_name.clone() };
+    let password_full = if app.nrf_cursor == 1 { "*".repeat(app.nrf_password.len()) + "_" } else { "*".repeat(app.nrf_password.len()) };
 
     let realm_lines = vec![
         Line::from(""),
-        Line::from(format!("Name: {}", truncate_with_ellipsis(&name_full, available_width, "Name: ".len()) )).style(if app.nrf_selected_field == 0 { Style::default().add_modifier(Modifier::BOLD) } else { Style::default() }),
+        Line::from(format!("Name: {}", truncate_with_ellipsis(&name_full, available_width, "Name: ".len()) )).style(if app.nrf_cursor == 0 { Style::default().add_modifier(Modifier::BOLD) } else { Style::default() }),
         Line::from(""),
-        Line::from(format!("Password: {}", truncate_with_ellipsis(&password_full, available_width, "Password: ".len()) )).style(if app.nrf_selected_field == 1 { Style::default().add_modifier(Modifier::BOLD) } else { Style::default() }),
+        Line::from(format!("Password: {}", truncate_with_ellipsis(&password_full, available_width, "Password: ".len()) )).style(if app.nrf_cursor == 1 { Style::default().add_modifier(Modifier::BOLD) } else { Style::default() }),
         Line::from(""),
     ];
     let realm_paragraph = Paragraph::new(realm_lines).wrap(Wrap { trim: true });
@@ -161,23 +161,23 @@ fn draw_new_realm_form(f: &mut Frame, app: &mut App, size: Rect) {
     f.render_widget(ca_block, chunks[1]);
 
 
-    let common_name_full = if app.nrf_selected_field == 2 { app.nrf_ca_common_name.clone() + "_" } else { app.nrf_ca_common_name.clone() };
-    let organization_full = if app.nrf_selected_field == 3 { app.nrf_ca_organization.clone() + "_" } else { app.nrf_ca_organization.clone() };
-    let country_full = if app.nrf_selected_field == 4 { app.nrf_ca_country.clone() + "_" } else { app.nrf_ca_country.clone() };
+    let common_name_full = if app.nrf_cursor == 2 { app.nrf_ca_common_name.clone() + "_" } else { app.nrf_ca_common_name.clone() };
+    let organization_full = if app.nrf_cursor == 3 { app.nrf_ca_organization.clone() + "_" } else { app.nrf_ca_organization.clone() };
+    let country_full = if app.nrf_cursor == 4 { app.nrf_ca_country.clone() + "_" } else { app.nrf_ca_country.clone() };
 
     let key_sizes = [1024, 2048, 4096];
     let ca_lines = vec![
         Line::from(""),
-        Line::from(format!("Common Name: {}", truncate_with_ellipsis(&common_name_full, available_width, "Common Name: ".len()) )).style(if app.nrf_selected_field == 2 { Style::default().add_modifier(Modifier::BOLD) } else { Style::default() }),
+        Line::from(format!("Common Name: {}", truncate_with_ellipsis(&common_name_full, available_width, "Common Name: ".len()) )).style(if app.nrf_cursor == 2 { Style::default().add_modifier(Modifier::BOLD) } else { Style::default() }),
         Line::from(""),
-        Line::from(format!("Organization: {}", truncate_with_ellipsis(&organization_full, available_width, "Organization: ".len()) )).style(if app.nrf_selected_field == 3 { Style::default().add_modifier(Modifier::BOLD) } else { Style::default() }),
+        Line::from(format!("Organization: {}", truncate_with_ellipsis(&organization_full, available_width, "Organization: ".len()) )).style(if app.nrf_cursor == 3 { Style::default().add_modifier(Modifier::BOLD) } else { Style::default() }),
         Line::from(""),
-        Line::from(format!("Country: {}", truncate_with_ellipsis(&country_full, available_width, "Country: ".len()) )).style(if app.nrf_selected_field == 4 { Style::default().add_modifier(Modifier::BOLD) } else { Style::default() }),
+        Line::from(format!("Country: {}", truncate_with_ellipsis(&country_full, available_width, "Country: ".len()) )).style(if app.nrf_cursor == 4 { Style::default().add_modifier(Modifier::BOLD) } else { Style::default() }),
         Line::from(""),
         Line::from(format!("Key Size: {} {} {}",
-            if app.nrf_selected_field == 5 && app.nrf_ca_key_size_index > 0 { "←" } else { " " },
+            if app.nrf_cursor == 5 && app.nrf_ca_key_size_index > 0 { "←" } else { " " },
             key_sizes[app.nrf_ca_key_size_index],
-            if app.nrf_selected_field == 5 && app.nrf_ca_key_size_index < key_sizes.len().saturating_sub(1) { "→" } else { " " })).style(if app.nrf_selected_field == 5 { Style::default().add_modifier(Modifier::BOLD) } else { Style::default() }),
+            if app.nrf_cursor == 5 && app.nrf_ca_key_size_index < key_sizes.len().saturating_sub(1) { "→" } else { " " })).style(if app.nrf_cursor == 5 { Style::default().add_modifier(Modifier::BOLD) } else { Style::default() }),
         Line::from(""),
     ];
     let ca_paragraph = Paragraph::new(ca_lines).wrap(Wrap { trim: true });
@@ -189,16 +189,16 @@ fn draw_new_realm_form(f: &mut Frame, app: &mut App, size: Rect) {
         .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
         .split(chunks[2]);
 
-    let create_text = if app.nrf_selected_field == 6 { "[Create]" } else { " Create " };
+    let create_text = if app.nrf_cursor == 6 { "[Create]" } else { " Create " };
     let create_paragraph = Paragraph::new(create_text)
         .alignment(Alignment::Center)
-        .style(if app.nrf_selected_field == 6 { Style::default().add_modifier(Modifier::BOLD) } else { Style::default() });
+        .style(if app.nrf_cursor == 6 { Style::default().add_modifier(Modifier::BOLD) } else { Style::default() });
     f.render_widget(create_paragraph, button_chunks[0]);
 
-    let cancel_text = if app.nrf_selected_field == 7 { "[Cancel]" } else { " Cancel " };
+    let cancel_text = if app.nrf_cursor == 7 { "[Cancel]" } else { " Cancel " };
     let cancel_paragraph     = Paragraph::new(cancel_text)
         .alignment(Alignment::Center)
-        .style(if app.nrf_selected_field == 7 { Style::default().add_modifier(Modifier::BOLD) } else { Style::default() });
+        .style(if app.nrf_cursor == 7 { Style::default().add_modifier(Modifier::BOLD) } else { Style::default() });
     f.render_widget(cancel_paragraph, button_chunks[1]);
 
 }
@@ -237,7 +237,7 @@ fn draw_dashboard(f: &mut Frame, app: &mut App, size: Rect) {
         .iter()
         .enumerate()
         .map(|(i, item)| {
-            let style = if i == app.dashboard_selected_static && matches!(app.dashboard_select, DashboardSelect::StaticOption) {
+            let style = if i == app.dashboard_selected && !app.dashboard_on_content {
                 Style::default().fg(Color::Black).bg(Color::White)
             } else {
                 Style::default()
@@ -248,17 +248,11 @@ fn draw_dashboard(f: &mut Frame, app: &mut App, size: Rect) {
 
     let static_list = List::new(static_items)
         .block(Block::default().borders(Borders::NONE))
-        .highlight_style(if matches!(app.dashboard_select, DashboardSelect::StaticOption) {
-            Style::default().add_modifier(Modifier::BOLD)
-        } else {
-            Style::default()
-        })
-        .highlight_symbol(if matches!(app.dashboard_select, DashboardSelect::StaticOption) { "> " } else { "" });
+        .highlight_style(Style::default().add_modifier(Modifier::BOLD))
+        .highlight_symbol("> ");
 
     let mut static_state = ListState::default();
-    if matches!(app.dashboard_select, DashboardSelect::StaticOption) {
-        static_state.select(Some(app.dashboard_selected_static));
-    }
+    static_state.select(Some(app.dashboard_selected));
 
     f.render_stateful_widget(static_list, static_inner, &mut static_state);
 
@@ -272,7 +266,8 @@ fn draw_dashboard(f: &mut Frame, app: &mut App, size: Rect) {
         .iter()
         .enumerate()
         .map(|(i, item)| {
-            let style = if i == app.dashboard_selected_cert && matches!(app.dashboard_select, DashboardSelect::CertList) {
+            let style = if i+app.dashboard_static_menu.len() == app.dashboard_selected
+                                && !app.dashboard_on_content {
                 Style::default().fg(Color::Black).bg(Color::White)
             } else {
                 Style::default()
@@ -283,17 +278,11 @@ fn draw_dashboard(f: &mut Frame, app: &mut App, size: Rect) {
 
     let cert_list = List::new(cert_items)
         .block(Block::default().borders(Borders::NONE))
-        .highlight_style(if matches!(app.dashboard_select, DashboardSelect::CertList) {
-            Style::default().add_modifier(Modifier::BOLD)
-        } else {
-            Style::default()
-        })
-        .highlight_symbol(if matches!(app.dashboard_select, DashboardSelect::CertList) { "> " } else { "" });
+        .highlight_style(Style::default().add_modifier(Modifier::BOLD))
+        .highlight_symbol("> ");
 
     let mut cert_state = ListState::default();
-    if matches!(app.dashboard_select, DashboardSelect::CertList) {
-        cert_state.select(Some(app.dashboard_selected_cert));
-    }
+    cert_state.select(Some(app.dashboard_selected));
 
     f.render_stateful_widget(cert_list, cert_inner, &mut cert_state);
 
@@ -332,51 +321,33 @@ fn truncate_with_ellipsis(s: &str, available_width: usize, text_size: usize) -> 
 
 fn generate_dashboard_content(app: &mut App, inner_area: &Rect) ->  Box<dyn WidgetRef> {
     // dynamically fill the content (right box) of dashboard depending of the current selection
-    match app.dashboard_select {
-        DashboardSelect::StaticOption => {
-            match app.dashboard_selected_static {
-                0 => {
-                    let text = app.current_realm.as_ref().unwrap().ca.get_info_txt().unwrap();
-                    update_scroll(app, &inner_area, &text);
-                    return Box::new(mywidgets::ScrollableParagraph::new(text, app.scroll, app.max_scroll));
-                },
-                1 => {
-                    return Box::new(Paragraph::new("Static1")
-                        .block(Block::default().borders(Borders::NONE))
-                        .alignment(Alignment::Center));
-                },
-                2 => {
-                    return Box::new(Paragraph::new("Static2")
-                        .block(Block::default().borders(Borders::NONE))
-                        .alignment(Alignment::Center));
-                },
-                3 => {
-                    return Box::new(Paragraph::new("Static3")
-                        .block(Block::default().borders(Borders::NONE))
-                        .alignment(Alignment::Center));
-                },
-                _ => {
-                    return Box::new(Paragraph::new("Static_shouldneverappear")
-                        .block(Block::default().borders(Borders::NONE))
-                        .alignment(Alignment::Center));
-                },
-            }
-        }
-        DashboardSelect::CertList => {
-            match app.dashboard_selected_static {
-                0 => {
-                    return Box::new(Paragraph::new("Cert0")
-                        .block(Block::default().borders(Borders::NONE))
-                        .alignment(Alignment::Center));
-                },
-                _ => {
-                    return Box::new(Paragraph::new("Cert_If_List_Empty")
-                        .block(Block::default().borders(Borders::NONE))
-                        .alignment(Alignment::Center));
-                }, // appear if list empty
-            }
-        }
-    };
+    match app.dashboard_selected {
+        0 => {
+            let text = app.current_realm.as_ref().unwrap().ca.get_info_txt().unwrap();
+            update_scroll(app, &inner_area, &text);
+            return Box::new(mywidgets::ScrollableParagraph::new(text, app.scroll, app.max_scroll));
+        },
+        1 => {
+            return Box::new(Paragraph::new("Static1")
+                .block(Block::default().borders(Borders::NONE))
+                .alignment(Alignment::Center));
+        },
+        2 => {
+            return Box::new(Paragraph::new("Static2")
+                .block(Block::default().borders(Borders::NONE))
+                .alignment(Alignment::Center));
+        },
+        3 => {
+            return Box::new(Paragraph::new("Static3")
+                .block(Block::default().borders(Borders::NONE))
+                .alignment(Alignment::Center));
+        },
+        _ => { // Cert
+            return Box::new(Paragraph::new("Cert_0")
+                .block(Block::default().borders(Borders::NONE))
+                .alignment(Alignment::Center));
+        },
+    }
     
 }
 

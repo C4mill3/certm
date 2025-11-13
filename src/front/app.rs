@@ -10,8 +10,8 @@ use ratatui::{
 use std::io;
 
 // Backend
-use crate::tools;
-use tools::certs_manager::{Realm, Cert, KeySize};
+use crate::tools::{self};
+use tools::certs_manager::{Realm, Cert, KeySize, CertType};
 use tools::mycrypt::{encrypt_to_file, decrypt_from_file};
 
 #[derive(Clone)]
@@ -23,11 +23,6 @@ pub enum AppState {
     Dashboard,
 }
 
-#[derive(Clone)]
-pub enum DashboardSelect {
-    StaticOption,
-    CertList,
-}
 
 #[derive(Clone)]
 pub struct App {
@@ -45,13 +40,19 @@ pub struct App {
     
     // Dashboard
     pub dashboard_static_menu: Vec<String>,
-    pub dashboard_selected_static: usize,
-    pub dashboard_selected_cert: usize,
-    pub dashboard_select: DashboardSelect,
+    pub dashboard_selected: usize,
     pub dashboard_on_content: bool, // is focus on content box
 
+    pub dashboard_content_cursor: usize,
+
+    pub dashboard_newcert_type: CertType,
+    pub dashboard_newcert_keysize: KeySize,
+    pub dashboard_newcert_cn: String,
+    pub dashboard_newcert_altdns: Vec<String>,
+    pub dashboard_newcert_altip: Vec<String>,
+
     // Fields for NewRealmForm (nrf)
-    pub nrf_selected_field: usize, // 0: Name, 1: Password, 2: Common Name, 3: Organization, 4: Country, 5: Key Size, 6: Cancel, 7: Create
+    pub nrf_cursor: usize, // 0: Name, 1: Password, 2: Common Name, 3: Organization, 4: Country, 5: Key Size, 6: Cancel, 7: Create
     pub nrf_name: String,
     pub nrf_password: String,
     pub nrf_ca_common_name: String,
@@ -85,12 +86,18 @@ impl App {
             current_realm: None,
 
             dashboard_static_menu,
-            dashboard_selected_static: 0,
-            dashboard_selected_cert: 0,
-            dashboard_select: DashboardSelect::StaticOption,
+            dashboard_selected: 0,
             dashboard_on_content: false,
+            dashboard_content_cursor: 0,
 
-            nrf_selected_field: 0,
+    
+            dashboard_newcert_type: CertType::Server,
+            dashboard_newcert_keysize: KeySize::Size4096,
+            dashboard_newcert_cn: String::new(),
+            dashboard_newcert_altdns: Vec::new(),
+            dashboard_newcert_altip: Vec::new(),
+
+            nrf_cursor: 0,
             nrf_name: String::new(),
             nrf_password: String::new(),
             nrf_ca_common_name: String::new(),
@@ -151,12 +158,12 @@ impl App {
                         KeyCode::Up => self.nrf_previous_field(),
                         KeyCode::Down => self.nrf_next_field(),
                         KeyCode::Left => {
-                            if self.nrf_selected_field == 5 {
+                            if self.nrf_cursor == 5 {
                                 self.nrf_change_key_size(false); // Decrease key size
                             }
                         }
                         KeyCode::Right => {
-                            if self.nrf_selected_field == 5 {
+                            if self.nrf_cursor == 5 {
                                 self.nrf_change_key_size(true); // Increase key size
                             }
                         }
@@ -167,7 +174,6 @@ impl App {
                         _ => {}
                     },
                     AppState::Dashboard => match key.code {
-                        KeyCode::Tab | KeyCode::BackTab=> self.dashboard_next_focus(),
                         KeyCode::Down => self.dashboard_down(),
                         KeyCode::Up => self.dashboard_up(),
                         KeyCode::Enter => self.dashboard_select(),
@@ -284,20 +290,20 @@ impl App {
     
     // New Realm Form
     pub fn nrf_next_field(&mut self) {
-        if self.nrf_selected_field < 7 {
-            self.nrf_selected_field += 1;
+        if self.nrf_cursor < 7 {
+            self.nrf_cursor += 1;
         }
     }
 
     pub fn nrf_previous_field(&mut self) {
-        if self.nrf_selected_field > 0 {
-            self.nrf_selected_field = self.nrf_selected_field.saturating_sub(1);
+        if self.nrf_cursor > 0 {
+            self.nrf_cursor = self.nrf_cursor.saturating_sub(1);
         }
     }
 
     pub fn nrf_activate_field(&mut self) {
         // Activate button and maybe other
-        match self.nrf_selected_field {
+        match self.nrf_cursor {
             6 => {
                 // Create realm (placeholder - implement based on your backend)
                 match self.nrf_create_realm() {
@@ -322,7 +328,7 @@ impl App {
     }
 
     pub fn nrf_input_char(&mut self, c: char) {
-        let field = match self.nrf_selected_field {
+        let field = match self.nrf_cursor {
             0 => &mut self.nrf_name,
             1 => &mut self.nrf_password,
             2 => &mut self.nrf_ca_common_name,
@@ -331,7 +337,7 @@ impl App {
             _ => return, // Not an input field
         };
         // COUNTRY have to be == 2CHAR
-        if self.nrf_selected_field == 4 {
+        if self.nrf_cursor == 4 {
             if field.len() < 2 {
                 field.push(c.to_ascii_uppercase());
             }
@@ -345,7 +351,7 @@ impl App {
     }
 
     pub fn nrf_backspace(&mut self) {
-        let field = match self.nrf_selected_field {
+        let field = match self.nrf_cursor {
             0 => &mut self.nrf_name,
             1 => &mut self.nrf_password,
             2 => &mut self.nrf_ca_common_name,
@@ -371,7 +377,7 @@ impl App {
         self.nrf_ca_organization.clear();
         self.nrf_ca_country.clear();
         self.nrf_ca_key_size_index = 2; // Reset to 4096
-        self.nrf_selected_field = 0;
+        self.nrf_cursor = 0;
     }
 
     pub fn nrf_get_key_size(&self) -> KeySize {
@@ -395,42 +401,15 @@ impl App {
     }
 
     // Dashboard
-    pub fn dashboard_next_focus(&mut self) {
-        if ! self.dashboard_on_content {
-            self.dashboard_select = match self.dashboard_select {
-                DashboardSelect::StaticOption => DashboardSelect::CertList,
-                DashboardSelect::CertList => DashboardSelect::StaticOption,
-            };
-        }
-    }
 
     pub fn dashboard_up(&mut self) {
         if ! self.dashboard_on_content {
-            self.scroll=0; // reset scroll when changing view
-            match self.dashboard_select {
-                DashboardSelect::StaticOption => {
-                    if self.dashboard_selected_static > 0 {
-                        self.dashboard_selected_static = self.dashboard_selected_static.saturating_sub(1);
-                    }
-                }
-                DashboardSelect::CertList => {
-                    if self.dashboard_selected_cert > 0 {
-                        self.dashboard_selected_cert = self.dashboard_selected_cert.saturating_sub(1);
-                    }
-                }
-            }
+            self.scroll=0; // reset scroll on content when changing in menu
+            self.dashboard_selected = self.dashboard_selected.saturating_sub(1);
         }else{
-            match self.dashboard_select {
-                DashboardSelect::StaticOption => {
-                    match self.dashboard_selected_static {
-                        0 => self.scroll_up(), // Show CA
-                        _ => {}, //pass
-                    }
-
-                }
-                DashboardSelect::CertList => {
-                    
-                } // pass
+            match self.dashboard_selected {
+                0 => self.scroll_up(), // Show CA
+                _ => {}, //pass
             }
         }
     }
@@ -439,31 +418,16 @@ impl App {
     pub fn dashboard_down(&mut self) {
         if ! self.dashboard_on_content {
             self.scroll=0; // reset scroll when changing view
-            match self.dashboard_select {
-                DashboardSelect::StaticOption => {
-                    if self.dashboard_selected_static < self.dashboard_static_menu.len().saturating_sub(1) {
-                        self.dashboard_selected_static += 1;
-                    }
-                }
-                DashboardSelect::CertList => {
-                    let realm_len = self.current_realm.as_ref().map(|realm| realm.certs.len()).unwrap_or(0);
-                    if self.dashboard_selected_cert < realm_len.saturating_sub(1) {
-                        self.dashboard_selected_cert += 1;
-                    }
-                }
+
+            let realm_len = self.current_realm.as_ref().map(|realm| realm.certs.len()).unwrap_or(0);
+            let total_len = self.dashboard_static_menu.len() + realm_len;
+            if self.dashboard_selected < total_len.saturating_sub(1) {
+                self.dashboard_selected += 1;
             }
         }else{
-            match self.dashboard_select {
-                DashboardSelect::StaticOption => {
-                    match self.dashboard_selected_static {
-                        0 => self.scroll_down(), // Show CA
-                        _ => {}, //pass
-                    }
-
-                }
-                DashboardSelect::CertList => {
-                    
-                } // pass
+            match self.dashboard_selected {
+                0 => self.scroll_down(), // Show CA
+                _ => {}, //pass
             }
         }
     }
@@ -484,14 +448,7 @@ impl App {
         if ! self.dashboard_on_content{
             self.dashboard_on_content = true;
         }else{
-            match self.dashboard_select {
-                DashboardSelect::StaticOption => {
-                    //TODO
-                }
-                DashboardSelect::CertList => {
-                    //TODO
-                }
-            }
+            // ??
         }
     }
 
