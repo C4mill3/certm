@@ -1,5 +1,5 @@
 use ratatui::{
-    buffer::Buffer, layout::{Constraint, Direction, Layout, Rect}, prelude::*, widgets::{Block, Borders, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Widget, WidgetRef, Wrap}
+    buffer::Buffer, layout::{Constraint, Direction, Layout, Rect}, prelude::*, widgets::{Block, BorderType, Borders, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Widget, WidgetRef, Wrap}
 };
 
 use crate::tools::{self};
@@ -78,9 +78,9 @@ pub struct NewCertForm {
 }
 
 impl NewCertForm {
-    pub fn new(cursor: usize, newcert_type: CertType, newcert_keysize: KeySize, newcert_cn: String,
-                newcert_altdns: Vec<String>, newcert_altip: Vec<String>) -> Self {
-        Self{cursor, newcert_type, newcert_keysize, newcert_cn, newcert_altdns, newcert_altip}
+    pub fn new(cursor: usize, newcert_type: CertType, newcert_keysize: KeySize, newcert_cn: &String,
+                newcert_altdns: &Vec<String>, newcert_altip: &Vec<String>) -> Self {
+        Self{cursor, newcert_type, newcert_keysize, newcert_cn: newcert_cn.clone(), newcert_altdns: newcert_altdns.clone(), newcert_altip: newcert_altip.clone()}
     }
 }
 
@@ -93,6 +93,15 @@ impl WidgetRef for NewCertForm {
             Constraint::Length(10), // CA block
             Constraint::Length(2), // Buttons
         ]).split(area);
+
+
+
+        // CA block
+        let ca_block = Block::default()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .title("CA");
+        let ca_inner = ca_block.inner(chunks[1]);
 
         // x.render(chunks, buf)
     }

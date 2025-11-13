@@ -11,7 +11,7 @@ use bincode;
 
 use super::utility::{FSItemType, list_in_path, CA_VAULT, resolve_path};
 
-#[derive(bincode::Encode, bincode::Decode, Debug, Clone)]
+#[derive(bincode::Encode, bincode::Decode, Debug, Clone, Copy)]
 pub enum CertType{
     Server,
     Client,
@@ -20,7 +20,7 @@ pub enum CertType{
     Unknown
 }
 
-#[derive(bincode::Encode, bincode::Decode, Debug, Clone)]
+#[derive(bincode::Encode, bincode::Decode, Debug, Clone, Copy)]
 pub enum KeySize{
     Size1024,
     Size2048,
@@ -51,17 +51,20 @@ impl Cert {
     }
 
     // Export the public key in PEM format
-    pub fn get_cert_txt(&self) -> Result<String, Box<dyn std::error::Error>> {
+    pub fn get_public_txt(&self) -> Result<String, Box<dyn std::error::Error>> {
         let public_key = self.get_public_key()?;
         let public_key_pem = public_key.public_key_to_pem()?;
         Ok(String::from_utf8(public_key_pem)?)
     }
 
+    // Export the cert in PEM format
+    pub fn get_cert_txt(&self) -> Result<String, Box<dyn std::error::Error>> {
+        Ok(self.cert.clone())
+    }
+
     // Export the private key in PEM format
     pub fn get_private_txt(&self) -> Result<String, Box<dyn std::error::Error>> {
-        let private_key = self.get_private_key()?;
-        let private_key_pem = private_key.private_key_to_pem_pkcs8()?;
-        Ok(String::from_utf8(private_key_pem)?)
+        Ok(self.private_key.clone())
     }
     
     // Utility

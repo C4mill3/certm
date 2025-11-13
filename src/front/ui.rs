@@ -38,8 +38,6 @@ fn draw_error_prompt(f: &mut Frame, app: &mut App, size: Rect) {
     let inner_area = block.inner(area);
 
 
-
-
     update_scroll(app, &inner_area, &app.last_error.clone());
     let content = mywidgets::ScrollableParagraph::new(app.last_error.clone(), app.scroll, app.max_scroll);
     content.render_ref(inner_area, f.buffer_mut());
@@ -328,9 +326,7 @@ fn generate_dashboard_content(app: &mut App, inner_area: &Rect) ->  Box<dyn Widg
             return Box::new(mywidgets::ScrollableParagraph::new(text, app.scroll, app.max_scroll));
         },
         1 => {
-            return Box::new(Paragraph::new("Static1")
-                .block(Block::default().borders(Borders::NONE))
-                .alignment(Alignment::Center));
+            return Box::new(mywidgets::NewCertForm::new(app.scroll, app.dashboard_newcert_type, app.dashboard_newcert_keysize, &app.dashboard_newcert_cn, &app.dashboard_newcert_altdns, &app.dashboard_newcert_altip));
         },
         2 => {
             return Box::new(Paragraph::new("Static2")

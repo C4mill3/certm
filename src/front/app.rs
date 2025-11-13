@@ -243,6 +243,9 @@ impl App {
         match realm_decode {
             Ok(realm) => {
                 self.current_realm = Some(realm);
+                self.dashboard_content_cursor = 0;
+                self.scroll = 0;
+                self.dashboard_selected = 0;
                 self.state=AppState::Dashboard
             },
             Err(e) => {
