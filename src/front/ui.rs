@@ -54,6 +54,7 @@ fn draw_select_realm(f: &mut Frame, app: &mut App, size: Rect, tips : bool) {
         block = block.title_bottom(Line::from(vec!["↑↓".red(), DOT.into(),
             "Select".into(), "↵".red(), DOT.into(),
             "N".red(), "ew".into(), DOT.into(),
+            "D".red(), "elete".into(), DOT.into(),
             "Esc".red(),]).right_aligned());
     }
 
@@ -87,12 +88,15 @@ fn draw_select_realm(f: &mut Frame, app: &mut App, size: Rect, tips : bool) {
 
 fn draw_password_prompt(f: &mut Frame, app: &mut App, size: Rect) {
     let area = popup_rect(25, 5, 40, 20, size);
+    let intent = match app.password_intent {
+        PasswordIntent::EnterRealm => {"Enter in"},
+        PasswordIntent::DeleteRealm => {"Delete"}
+    };
     let block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .title(app.realm_list[app.realm_selected].as_str())
-        .title_bottom(Line::from(vec!["Try".into(), "↵".red(), DOT.into(),
-            "Esc".red(),]).right_aligned());
+        .title_bottom(Line::from(vec!["Try".into(), "↵".red(), DOT.into(), "Esc".red(),]).right_aligned())
+        .title(format!("{} {}", intent, app.realm_list[app.realm_selected].as_str()));
 
     f.render_widget(Clear, area); // clear the background
     f.render_widget(&block, area);

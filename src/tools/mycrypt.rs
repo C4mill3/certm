@@ -6,7 +6,7 @@ use rand::Rng;
 use sha2::{Sha256, Digest};
 use bincode::{self, config::Configuration};
 
-use super::utility::{sanitize_name, resolve_path, write_to_file, CA_VAULT};
+use super::utility::{sanitize_name, resolve_path, write_to_file, delete_file, CA_VAULT};
 
 use super::certs_manager::Realm;
 
@@ -75,6 +75,13 @@ pub fn decrypt_from_file (name : &str, password: &str) -> Result<Realm, Box<dyn 
     };
     
     return Ok(resp);
+}
+
+pub fn delete_encrypted_file(name : &str) -> Result<(), Box<dyn std::error::Error>> {
+    // Used to centralize interaction with realm file
+    let path_build = &resolve_path(CA_VAULT)
+        .join(format!("{}.dat",sanitize_name(name)));
+    return delete_file(path_build);
 }
 
 

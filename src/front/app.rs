@@ -12,7 +12,7 @@ use std::{io};
 // Backend
 use crate::tools::{self};
 use tools::certs_manager::{Realm, Cert, KeySize, CertType};
-use tools::mycrypt::{encrypt_to_file, decrypt_from_file};
+use tools::mycrypt::{encrypt_to_file, decrypt_from_file, delete_encrypted_file};
 
 #[derive(Clone)]
 pub enum AppState {
@@ -21,6 +21,12 @@ pub enum AppState {
     PasswordPrompt,
     NewRealmForm,
     Dashboard,
+}
+
+#[derive(Clone)]
+pub enum PasswordIntent {
+    EnterRealm,
+    DeleteRealm
 }
 
 
@@ -36,6 +42,7 @@ pub struct App {
     
     // PasswordPrompt
     pub password_text: String,
+    pub password_intent: PasswordIntent,
     pub current_realm: Option<Realm>,
     
     // Dashboard
@@ -85,6 +92,7 @@ impl App {
             realm_selected: 0,
             
             password_text: String::new(),
+            password_intent: PasswordIntent::EnterRealm,
             current_realm: None,
 
             dashboard_static_menu,
@@ -144,7 +152,10 @@ impl App {
                         KeyCode::Home => self.realm_fast_previous(),
                         KeyCode::End => self.realm_fast_next(),
                         KeyCode::Enter => self.realm_select_action(),
-                        KeyCode::Char('n') | KeyCode::Char('N') => self.state = AppState::NewRealmForm,
+                        KeyCode::Char('n') | KeyCode::Char('N') => {
+                            self.state = AppState::NewRealmForm;
+                        },
+                        KeyCode::Char('d') | KeyCode::Char('D') | KeyCode::Delete | KeyCode::Backspace => self.realm_delete_action() ,
                         KeyCode::Esc => running = false,
                         _ => {}
                     },
@@ -233,6 +244,7 @@ impl App {
     }
     
     pub fn back_to_select_realm(&mut self) {
+        self.password_text.clear();
         self.current_realm = None;
         self.realm_list = Realm::list().unwrap();
         self.state = AppState::SelectRealm
@@ -240,26 +252,51 @@ impl App {
 
     pub fn realm_select_action(&mut self) {
         self.password_text.clear();
+        self.password_intent = PasswordIntent::EnterRealm;
         self.state = AppState::PasswordPrompt;
     }
-    
+
+    pub fn realm_delete_action(&mut self) {
+        self.password_text.clear();
+        self.password_intent = PasswordIntent::DeleteRealm;
+        self.state = AppState::PasswordPrompt;
+    }
+
     // Password
     pub fn password_submit(&mut self) {
-        let filename = &self.realm_list[self.realm_selected];
-        let realm_decode = decrypt_from_file(&filename, &self.password_text);
-        match realm_decode {
-            Ok(realm) => {
-                self.current_realm = Some(realm);
-                self.dashboard_content_cursor = 0;
-                self.scroll = 0;
-                self.dashboard_selected = 0;
-                self.state=AppState::Dashboard
+        match self.password_intent {
+            PasswordIntent::EnterRealm => {
+                let filename = &self.realm_list[self.realm_selected];
+                let realm_decode = decrypt_from_file(&filename, &self.password_text);
+                match realm_decode {
+                    Ok(realm) => {
+                        self.current_realm = Some(realm);
+                        self.dashboard_content_cursor = 0;
+                        self.scroll = 0;
+                        self.dashboard_selected = 0;
+                        self.state=AppState::Dashboard
+                    },
+                    Err(e) => {
+                        self.password_text.clear();
+                        self.switch_to_error(e.to_string(), AppState::PasswordPrompt);
+                    },
+                }
             },
-            Err(e) => {
-                self.password_text.clear();
-                self.switch_to_error(e.to_string(), AppState::PasswordPrompt);
-            },
+            PasswordIntent::DeleteRealm => {
+                let realm_name = &self.realm_list[self.realm_selected];
+                match delete_encrypted_file(realm_name) {
+                    Ok(_) => {
+                        self.realm_selected = self.realm_selected.saturating_sub(1);
+                        self.back_to_select_realm();
+                    },
+                    Err(e) => {
+                        self.password_text.clear();
+                        self.switch_to_error(e.to_string(), AppState::PasswordPrompt);
+                    },
+                };
+            }
         }
+
     }
 
 

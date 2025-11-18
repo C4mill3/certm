@@ -124,3 +124,7 @@ pub fn write_to_file(filepath: &Path, data: &[u8], permissions: u32, override_ex
 
     Ok(())
 }
+
+pub fn delete_file(filepath: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    fs::remove_file(filepath).map_err(|e| e.into())
+}
