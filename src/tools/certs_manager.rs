@@ -411,7 +411,7 @@ fn generate_new_cert(ca: &Cert, cert_type: CertType, serial_number: u32, key_siz
     cert_builder.set_version(3)?; // Version 3
     cert_builder.set_serial_number(openssl::bn::BigNum::from_u32(serial_number)?.to_asn1_integer()?.as_ref())?;
     cert_builder.set_not_before(Asn1Time::days_from_now(0)?.as_ref())?;
-    cert_builder.set_not_after(Asn1Time::days_from_now(365)?.as_ref())?;
+    cert_builder.set_not_after(Asn1Time::from_str(valid_until)?.as_ref())?;
     cert_builder.set_subject_name(csr.subject_name())?;
     cert_builder.set_issuer_name(&ca_cert.subject_name())?;
     cert_builder.set_pubkey(csr.public_key()?.as_ref())?;

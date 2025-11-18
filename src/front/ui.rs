@@ -6,7 +6,27 @@ use ratatui::{
 use super::app::*;
 use super::mywidgets;
 
-pub fn ui(f: &mut Frame, app: &mut App) {
+pub fn ui_wrong_size(f: &mut Frame, current_width :u16, current_height: u16) {
+    let size = f.area();
+    let area = popup_rect(5, 5, 100, 100, size);
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .title("Error")
+        .title_bottom(Line::from(vec!["Esc".red()]).right_aligned());
+
+    f.render_widget(Clear, area); // clear the background
+    f.render_widget(&block, area);
+
+    let inner_area = block.inner(area);
+
+    let content = Paragraph::new(format!("Minimal Size:\n 52x22\nCurrently:\n{}x{}", current_width, current_height));
+    content.render(inner_area, f.buffer_mut());
+
+}
+
+pub fn ui_render(f: &mut Frame, app: &mut App) {
     let size = f.area();
     match app.state {
         AppState::ErrorPrompt => draw_error_prompt(f, app, size),
@@ -315,19 +335,20 @@ fn generate_dashboard_content(app: &mut App, inner_area: &Rect) ->  Box<dyn Widg
             return Box::new(mywidgets::NewCertForm::new(app.dashboard_on_content, app.dashboard_content_cursor, app.dashboard_newcert_type, app.dashboard_newcert_keysize, &app.dashboard_newcert_cn, &app.dashboard_newcert_altdns, &app.dashboard_newcert_altip, &app.dashboard_newcert_validuntil));
         },
         2 => {
-            return Box::new(Paragraph::new("Static2")
+            return Box::new(Paragraph::new("WIP2")
                 .block(Block::default().borders(Borders::NONE))
                 .alignment(Alignment::Center));
         },
         3 => {
-            return Box::new(Paragraph::new("Static3")
+            return Box::new(Paragraph::new("WIP3")
                 .block(Block::default().borders(Borders::NONE))
                 .alignment(Alignment::Center));
         },
-        _ => { // Cert
-            return Box::new(Paragraph::new("Cert_0")
-                .block(Block::default().borders(Borders::NONE))
-                .alignment(Alignment::Center));
+        _ => { // x > 3 -> Cert
+            let cert_id = app.dashboard_selected.saturating_sub(app.dashboard_static_menu.len());
+            let text = app.current_realm.as_ref().unwrap().certs[cert_id].get_info_txt().unwrap();
+            update_scroll(app, &inner_area, &text);
+            return Box::new(mywidgets::ScrollableParagraph::new(text, app.scroll, app.max_scroll));
         },
     }
     

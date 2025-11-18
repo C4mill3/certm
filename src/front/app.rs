@@ -1,7 +1,7 @@
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
     execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{disable_raw_mode, enable_raw_mode, size, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use ratatui::{
     Frame, Terminal, backend::CrosstermBackend, layout::{Alignment, Constraint, Direction, Layout, Rect}, style::{Color, Modifier, Style, Stylize}, symbols::{DOT, half_block::UPPER}, text::Line, widgets::{self, Block, BorderType, Borders, Clear, List, ListItem, ListState, Paragraph, Wrap, block::Title}
@@ -115,7 +115,6 @@ impl App {
             nrf_ca_organization: String::new(),
             nrf_ca_country: String::new(),
             nrf_valid_until: String::new(),
-            
             nrf_ca_key_size_index: 2, // Default to 4096
             
             last_error: String::new(),
@@ -134,72 +133,83 @@ impl App {
 
         let mut running = true;
         while running {
-            terminal.draw(|f| super::ui(f, self))?;
-            
-            if let Event::Key(key) = event::read()? {
-                match self.state {
-                    AppState::ErrorPrompt => match key.code {
-                        KeyCode::Up => self.scroll_up(),
-                        KeyCode::Down => self.scroll_down(),
-                        KeyCode::Home => self.scroll_fast_up(),
-                        KeyCode::End => self.scroll_fast_down(),
-                        KeyCode::Esc => self.state = self.error_fallback_state.clone(),
-                        _ => {}
-                    },
-                    AppState::SelectRealm => match key.code {
-                        KeyCode::Up => self.realm_previous(),
-                        KeyCode::Down => self.realm_next(),
-                        KeyCode::Home => self.realm_fast_previous(),
-                        KeyCode::End => self.realm_fast_next(),
-                        KeyCode::Enter => self.realm_select_action(),
-                        KeyCode::Char('n') | KeyCode::Char('N') => {
-                            self.state = AppState::NewRealmForm;
+            let (width, height) = size()?;
+            if width < 52|| height < 22 { // Size limit
+                terminal.draw(|f| super::ui_wrong_size(f, width, height))?;
+                if let Event::Key(key) = event::read()? {
+                    match key.code {
+                        KeyCode::Esc => {running = false},
+                        _ => {} // pass
+                    }
+                }
+            }else {
+                terminal.draw(|f| super::ui_render(f, self))?;
+                
+                if let Event::Key(key) = event::read()? {
+                    match self.state {
+                        AppState::ErrorPrompt => match key.code {
+                            KeyCode::Up => self.scroll_up(),
+                            KeyCode::Down => self.scroll_down(),
+                            KeyCode::Home => self.scroll_fast_up(),
+                            KeyCode::End => self.scroll_fast_down(),
+                            KeyCode::Esc => self.state = self.error_fallback_state.clone(),
+                            _ => {}
                         },
-                        KeyCode::Char('d') | KeyCode::Char('D') | KeyCode::Delete | KeyCode::Backspace => self.realm_delete_action() ,
-                        KeyCode::Esc => running = false,
-                        _ => {}
-                    },
-                    AppState::PasswordPrompt => match key.code {
-                        KeyCode::Enter => self.password_submit(),
-                        KeyCode::Esc => self.back_to_select_realm(),
-                        KeyCode::Backspace => {
-                            self.password_text.pop();
-                        }
-                        KeyCode::Char(c) => {
-                            self.password_text.push(c);
-                        }
-                        _ => {}
-                    },
-                    AppState::NewRealmForm => match key.code {
-                        KeyCode::Up => self.nrf_previous_field(),
-                        KeyCode::Down => self.nrf_next_field(),
-                        KeyCode::Left => {
-                            if self.nrf_cursor == 6 {
-                                self.nrf_change_key_size(false); // Decrease key size
+                        AppState::SelectRealm => match key.code {
+                            KeyCode::Up => self.realm_previous(),
+                            KeyCode::Down => self.realm_next(),
+                            KeyCode::Home => self.realm_fast_previous(),
+                            KeyCode::End => self.realm_fast_next(),
+                            KeyCode::Enter => self.realm_select_action(),
+                            KeyCode::Char('n') | KeyCode::Char('N') => {
+                                self.state = AppState::NewRealmForm;
+                            },
+                            KeyCode::Char('d') | KeyCode::Char('D') | KeyCode::Delete | KeyCode::Backspace => self.realm_delete_action() ,
+                            KeyCode::Esc => {running = false},
+                            _ => {}
+                        },
+                        AppState::PasswordPrompt => match key.code {
+                                KeyCode::Enter => self.password_submit(),
+                            KeyCode::Esc => self.back_to_select_realm(),
+                            KeyCode::Backspace => {
+                                self.password_text.pop();
                             }
-                        }
-                        KeyCode::Right => {
-                            if self.nrf_cursor == 6 {
-                                self.nrf_change_key_size(true); // Increase key size
+                            KeyCode::Char(c) => {
+                                self.password_text.push(c);
                             }
-                        }
-                        KeyCode::Enter => self.nrf_activate_field(),
-                        KeyCode::Backspace => self.nrf_backspace(),
-                        KeyCode::Esc => self.back_to_select_realm(),
-                        KeyCode::Char(c) => self.nrf_input_char(c),
-                        _ => {}
-                    },
-                    AppState::Dashboard => match key.code {
-                        KeyCode::Down => self.dashboard_down(),
-                        KeyCode::Up => self.dashboard_up(),
-                        KeyCode::Enter => self.dashboard_enter(),
-                        KeyCode::Left => self.dashboard_left(),
-                        KeyCode::Right => self.dashboard_right(),
-                        KeyCode::Esc => self.dashboard_escape(),
-                        KeyCode::Backspace => self.dashboard_backspace(),
-                        KeyCode::Char(c) => self.dashboard_input_char(c),
-                        _ => {}
-                    },
+                            _ => {}
+                        },
+                        AppState::NewRealmForm => match key.code {
+                            KeyCode::Up => self.nrf_previous_field(),
+                            KeyCode::Down => self.nrf_next_field(),
+                            KeyCode::Left => {
+                                if self.nrf_cursor == 6 {
+                                    self.nrf_change_key_size(false); // Decrease key size
+                                }
+                            }
+                            KeyCode::Right => {
+                                if self.nrf_cursor == 6 {
+                                    self.nrf_change_key_size(true); // Increase key size
+                                }
+                            }
+                            KeyCode::Enter => self.nrf_activate_field(),
+                            KeyCode::Backspace => self.nrf_backspace(),
+                            KeyCode::Esc => self.back_to_select_realm(),
+                            KeyCode::Char(c) => self.nrf_input_char(c),
+                            _ => {}
+                        },
+                        AppState::Dashboard => match key.code {
+                            KeyCode::Down => self.dashboard_down(),
+                            KeyCode::Up => self.dashboard_up(),
+                            KeyCode::Enter => self.dashboard_enter(),
+                            KeyCode::Left => self.dashboard_left(),
+                            KeyCode::Right => self.dashboard_right(),
+                            KeyCode::Esc => self.dashboard_escape(),
+                            KeyCode::Backspace => self.dashboard_backspace(),
+                            KeyCode::Char(c) => self.dashboard_input_char(c),
+                            _ => {}
+                        },
+                    }
                 }
             }
         }
@@ -459,7 +469,10 @@ impl App {
                 1 => {  // New Cert (Previous Field)
                     self.dashboard_content_cursor = self.dashboard_content_cursor.saturating_sub(1);
                 },
-                _ => {}, //pass
+                2 | 3 => {}, //pass
+                _ => { // Certs
+                    self.scroll_up()
+                },
             }
         }
     }
@@ -483,7 +496,10 @@ impl App {
                         self.dashboard_content_cursor += 1;
                     }
                 },
-                _ => {}, //pass
+                2 | 3 => {}, //pass
+                _ => { // Certs
+                    self.scroll_down()
+                },
             }
         }
     }
@@ -524,10 +540,10 @@ impl App {
                         5 => { // Key Size
                             self.dashboard_newcert_keysize = self.dashboard_newcert_keysize.saturating_sub(1);
                         }
-                        _ => {} //pass
+                        _ => {self.dashboard_on_content = false;}, // if not on any interactive field
                     }
                 },
-                _ => {self.dashboard_on_content = false;}, // if not on any interactive field
+                _ => {self.dashboard_on_content = false;}, // if not on any interactive form
             }
         }
     }
