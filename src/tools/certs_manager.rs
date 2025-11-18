@@ -35,8 +35,8 @@ pub struct Cert {
 }
 
 impl Cert {
-    pub fn new(ca: &Cert, cert_type: CertType, serial_number: u32, key_size: KeySize, common_name: &str, altname_dns : &Vec<String>, altname_ip: &Vec<String>) -> Result<Self, Box<dyn std::error::Error>> {
-        return generate_new_cert(ca, cert_type, serial_number, key_size, common_name, altname_dns, altname_ip);
+    pub fn new(ca: &Cert, cert_type: CertType, serial_number: u32, key_size: KeySize, common_name: &str, valid_until: &str, altname_dns : &Vec<String>, altname_ip: &Vec<String>) -> Result<Self, Box<dyn std::error::Error>> {
+        return generate_new_cert(ca, cert_type, serial_number, key_size, common_name, valid_until, altname_dns, altname_ip);
     }
 
     pub fn get_cert(&self) -> Result<X509, Box<dyn std::error::Error >>{
@@ -114,8 +114,8 @@ pub struct Realm {
 }
 
 impl Realm {
-    pub fn new(name: &str, ca_key_size: KeySize, ca_common_name: &str, ca_organization: &str, ca_country: &str) -> Result<Self, Box<dyn std::error::Error>>{
-        let ca = generate_new_ca(ca_key_size, ca_common_name, ca_organization, ca_country)?;
+    pub fn new(name: &str, ca_key_size: KeySize, ca_common_name: &str, ca_organization: &str, ca_country: &str, valid_until: &str) -> Result<Self, Box<dyn std::error::Error>>{
+        let ca = generate_new_ca(ca_key_size, ca_common_name, ca_organization, ca_country, valid_until)?;
         let certs: Vec<Cert> = Vec::new();
         let resp = Realm{
             name: name.to_string(),
@@ -174,9 +174,9 @@ impl Realm {
     }
 
 
-    pub fn add_cert(&mut self, cert_type: CertType, key_size: KeySize, common_name: &str,  altname_dns : &Vec<String>, altname_ip: &Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
-        let new_serial_number = self.last_serial_num + 1;
-        let new_cert = Cert::new(&self.ca, cert_type, new_serial_number,  key_size, common_name,  altname_dns, altname_ip)?;
+    pub fn add_cert(&mut self, cert_type: CertType, key_size: KeySize, common_name: &str, valid_until: &str,  altname_dns : &Vec<String>, altname_ip: &Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
+        let new_serial_number = self.last_serial_num.saturating_add(1);
+        let new_cert = Cert::new(&self.ca, cert_type, new_serial_number,  key_size, common_name, valid_until,  altname_dns, altname_ip)?;
         self.certs.push(new_cert);
         self.last_serial_num = new_serial_number;
         Ok(())
@@ -281,7 +281,7 @@ impl Realm {
     }
 }
 
-fn generate_new_ca(key_size : KeySize, common_name : &str, organization : &str, country : &str) -> Result<Cert, Box<dyn std::error::Error>>{
+fn generate_new_ca(key_size : KeySize, common_name : &str, organization : &str, country : &str, valid_until: &str) -> Result<Cert, Box<dyn std::error::Error>>{
     //  generate a new CA
     // Generate CA private +pub key
     // Generate private key
@@ -302,15 +302,16 @@ fn generate_new_ca(key_size : KeySize, common_name : &str, organization : &str, 
     let name = name.build();
     
     let mut ca_cert_builder = X509Builder::new()?;
-    ca_cert_builder.set_version(2)?; // Version 3
+    ca_cert_builder.set_version(3)?; // Version 3
     
     let mut rng = rand::rng();
     let random_number: u32 = rng.random::<u32>();
     ca_cert_builder.set_serial_number(openssl::bn::BigNum::from_u32(random_number)?.to_asn1_integer()?.as_ref())?;
     ca_cert_builder.set_not_before(Asn1Time::days_from_now(0)?.as_ref())?;
-    
-    ca_cert_builder.set_not_after(Asn1Time::days_from_now(3650)?.as_ref())?;
+
+    ca_cert_builder.set_not_after(Asn1Time::from_str(valid_until)?.as_ref())?;
     ca_cert_builder.set_subject_name(&name)?;
+    ca_cert_builder.set_issuer_name(&name)?;
     ca_cert_builder.set_pubkey(&ca_private_key)?;
     
     let hash = sha1(&public_key_bytes);
@@ -359,8 +360,9 @@ fn generate_new_ca(key_size : KeySize, common_name : &str, organization : &str, 
 
 }
 
-fn generate_new_cert(ca: &Cert, cert_type: CertType, serial_number: u32, key_size: KeySize, common_name: &str, altname_dns : &Vec<String>, altname_ip: &Vec<String>) -> Result<Cert, Box<dyn std::error::Error>> {
+fn generate_new_cert(ca: &Cert, cert_type: CertType, serial_number: u32, key_size: KeySize, common_name: &str, valid_until: &str, altname_dns : &Vec<String>, altname_ip: &Vec<String>) -> Result<Cert, Box<dyn std::error::Error>> {
     // generate a new certificate
+    // valid_until exemple: "20231124123000Z" for 24/11/2023 at 12:30:00 UTC
 
     if let CertType::Ca = cert_type {
         return Err(Box::from("Will not generate a sub-ca, not implemented yet"));

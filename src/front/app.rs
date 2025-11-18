@@ -7,7 +7,7 @@ use ratatui::{
     Frame, Terminal, backend::CrosstermBackend, layout::{Alignment, Constraint, Direction, Layout, Rect}, style::{Color, Modifier, Style, Stylize}, symbols::{DOT, half_block::UPPER}, text::Line, widgets::{self, Block, BorderType, Borders, Clear, List, ListItem, ListState, Paragraph, Wrap, block::Title}
 };
 
-use std::io;
+use std::{io};
 
 // Backend
 use crate::tools::{self};
@@ -45,19 +45,21 @@ pub struct App {
 
     pub dashboard_content_cursor: usize,
 
-    pub dashboard_newcert_type: CertType,
-    pub dashboard_newcert_keysize: KeySize,
-    pub dashboard_newcert_cn: String,
-    pub dashboard_newcert_altdns: Vec<String>,
-    pub dashboard_newcert_altip: Vec<String>,
+    pub dashboard_newcert_cn: String, // Common Name
+    pub dashboard_newcert_altip: String, // Subject AltName IP
+    pub dashboard_newcert_altdns: String, // Subject AltName Domain Name
+    pub dashboard_newcert_validuntil: String, // Valid Until
+    pub dashboard_newcert_type: usize, // 0: Server, 1: Client, 2: ServerAndClient
+    pub dashboard_newcert_keysize: usize, // 0: 1024, 1: 2048, 2: 4096
 
     // Fields for NewRealmForm (nrf)
-    pub nrf_cursor: usize, // 0: Name, 1: Password, 2: Common Name, 3: Organization, 4: Country, 5: Key Size, 6: Cancel, 7: Create
+    pub nrf_cursor: usize, // 0: Name, 1: Password, 2: Common Name, 3: Organization, 4: Country, 5: Valid Until, 6: Key Size, 7: Cancel, 8: Create
     pub nrf_name: String,
     pub nrf_password: String,
     pub nrf_ca_common_name: String,
     pub nrf_ca_organization: String,
     pub nrf_ca_country: String,
+    pub nrf_valid_until: String,
     pub nrf_ca_key_size_index: usize, // 0: 1024, 1: 2048, 2: 4096
     pub last_error: String,
     pub error_fallback_state: AppState,
@@ -91,11 +93,12 @@ impl App {
             dashboard_content_cursor: 0,
 
     
-            dashboard_newcert_type: CertType::Server,
-            dashboard_newcert_keysize: KeySize::Size4096,
             dashboard_newcert_cn: String::new(),
-            dashboard_newcert_altdns: Vec::new(),
-            dashboard_newcert_altip: Vec::new(),
+            dashboard_newcert_altdns: String::new(),
+            dashboard_newcert_altip: String::new(),
+            dashboard_newcert_validuntil: String::new(),
+            dashboard_newcert_type: 0,
+            dashboard_newcert_keysize: 2,
 
             nrf_cursor: 0,
             nrf_name: String::new(),
@@ -103,6 +106,8 @@ impl App {
             nrf_ca_common_name: String::new(),
             nrf_ca_organization: String::new(),
             nrf_ca_country: String::new(),
+            nrf_valid_until: String::new(),
+            
             nrf_ca_key_size_index: 2, // Default to 4096
             
             last_error: String::new(),
@@ -158,28 +163,30 @@ impl App {
                         KeyCode::Up => self.nrf_previous_field(),
                         KeyCode::Down => self.nrf_next_field(),
                         KeyCode::Left => {
-                            if self.nrf_cursor == 5 {
+                            if self.nrf_cursor == 6 {
                                 self.nrf_change_key_size(false); // Decrease key size
                             }
                         }
                         KeyCode::Right => {
-                            if self.nrf_cursor == 5 {
+                            if self.nrf_cursor == 6 {
                                 self.nrf_change_key_size(true); // Increase key size
                             }
                         }
                         KeyCode::Enter => self.nrf_activate_field(),
                         KeyCode::Backspace => self.nrf_backspace(),
-                        KeyCode::Char(c) => self.nrf_input_char(c),
                         KeyCode::Esc => self.back_to_select_realm(),
+                        KeyCode::Char(c) => self.nrf_input_char(c),
                         _ => {}
                     },
                     AppState::Dashboard => match key.code {
                         KeyCode::Down => self.dashboard_down(),
                         KeyCode::Up => self.dashboard_up(),
-                        KeyCode::Enter => self.dashboard_select(),
+                        KeyCode::Enter => self.dashboard_enter(),
                         KeyCode::Left => self.dashboard_left(),
                         KeyCode::Right => self.dashboard_right(),
                         KeyCode::Esc => self.dashboard_escape(),
+                        KeyCode::Backspace => self.dashboard_backspace(),
+                        KeyCode::Char(c) => self.dashboard_input_char(c),
                         _ => {}
                     },
                 }
@@ -293,21 +300,19 @@ impl App {
     
     // New Realm Form
     pub fn nrf_next_field(&mut self) {
-        if self.nrf_cursor < 7 {
+        if self.nrf_cursor < 8 {
             self.nrf_cursor += 1;
         }
     }
 
     pub fn nrf_previous_field(&mut self) {
-        if self.nrf_cursor > 0 {
-            self.nrf_cursor = self.nrf_cursor.saturating_sub(1);
-        }
+        self.nrf_cursor = self.nrf_cursor.saturating_sub(1);
     }
 
     pub fn nrf_activate_field(&mut self) {
         // Activate button and maybe other
         match self.nrf_cursor {
-            6 => {
+            7 => {
                 // Create realm (placeholder - implement based on your backend)
                 match self.nrf_create_realm() {
                     Ok(_) => {
@@ -320,7 +325,7 @@ impl App {
                     },
                 }
             }
-            7 => { // Cancel
+            8 => { // Cancel
                 self.nrf_clear_form();
                 self.back_to_select_realm();
             }
@@ -337,20 +342,27 @@ impl App {
             2 => &mut self.nrf_ca_common_name,
             3 => &mut self.nrf_ca_organization,
             4 => &mut self.nrf_ca_country,
+            5 => &mut self.nrf_valid_until,
             _ => return, // Not an input field
         };
-        // COUNTRY have to be == 2CHAR
-        if self.nrf_cursor == 4 {
-            if field.len() < 2 {
-                field.push(c.to_ascii_uppercase());
-            }
-        }else{ // the other
-            if field.len() < 255 {
-                field.push(c);
-            }
-
-        }
-
+        
+        match self.nrf_cursor {
+            4 => { // COUNTRY have to be == 2CHAR
+                if field.len() < 2 && c.is_alphabetic() {
+                    field.push(c.to_ascii_uppercase());
+                }
+            },
+            5 => { // Date, limited to 8
+                if field.len() < 8 && c.is_ascii_digit(){
+                    field.push(c);
+                }
+            },
+            _ => { // Other, limited to 255
+                if field.len() < 255 && (c.is_ascii_alphanumeric() || vec!['!', '@', '#', '$', '%', '&', '*', '(', ')', '-', '=', '+', ' ', '.'].contains(&c)) {
+                    field.push(c);
+                }
+            },
+        };
     }
 
     pub fn nrf_backspace(&mut self) {
@@ -360,6 +372,7 @@ impl App {
             2 => &mut self.nrf_ca_common_name,
             3 => &mut self.nrf_ca_organization,
             4 => &mut self.nrf_ca_country,
+            5 => &mut self.nrf_valid_until,
             _ => return, // Not an input field
         };
         field.pop();
@@ -383,22 +396,14 @@ impl App {
         self.nrf_cursor = 0;
     }
 
-    pub fn nrf_get_key_size(&self) -> KeySize {
-        match self.nrf_ca_key_size_index {
-            0 => KeySize::Size1024,
-            1 => KeySize::Size2048,
-            2 => KeySize::Size4096,
-            _ => KeySize::Size2048,
-        }
-    }
-
     pub fn nrf_create_realm(&self) -> Result<(), Box<dyn std::error::Error>> {
         //BACKEND
         // Create the realm using settings, then create the vault if not already existing
-        let key_size = self.nrf_get_key_size();
+        let key_size = get_key_size(self.nrf_ca_key_size_index);
 
+        let formatted_time = format_date(&self.nrf_valid_until)?;
         
-        let new_realm= Realm::new(&self.nrf_name, key_size, &self.nrf_ca_common_name, &self.nrf_ca_organization, &self.nrf_ca_country)?;
+        let new_realm= Realm::new(&self.nrf_name, key_size, &self.nrf_ca_common_name, &self.nrf_ca_organization, &self.nrf_ca_country, &formatted_time)?;
         
         return encrypt_to_file(&self.nrf_name, &self.nrf_password, &new_realm, false);
     }
@@ -408,10 +413,15 @@ impl App {
     pub fn dashboard_up(&mut self) {
         if ! self.dashboard_on_content {
             self.scroll=0; // reset scroll on content when changing in menu
+            self.dashboard_content_cursor=0; // reset cursor when changing view
+
             self.dashboard_selected = self.dashboard_selected.saturating_sub(1);
         }else{
             match self.dashboard_selected {
                 0 => self.scroll_up(), // Show CA
+                1 => {  // New Cert (Previous Field)
+                    self.dashboard_content_cursor = self.dashboard_content_cursor.saturating_sub(1);
+                },
                 _ => {}, //pass
             }
         }
@@ -421,6 +431,7 @@ impl App {
     pub fn dashboard_down(&mut self) {
         if ! self.dashboard_on_content {
             self.scroll=0; // reset scroll when changing view
+            self.dashboard_content_cursor=0; // reset cursor when changing view
 
             let realm_len = self.current_realm.as_ref().map(|realm| realm.certs.len()).unwrap_or(0);
             let total_len = self.dashboard_static_menu.len() + realm_len;
@@ -430,6 +441,11 @@ impl App {
         }else{
             match self.dashboard_selected {
                 0 => self.scroll_down(), // Show CA
+                1 => {  // New Cert (Next Field)
+                    if self.dashboard_content_cursor < 6 {
+                        self.dashboard_content_cursor += 1;
+                    }
+                },
                 _ => {}, //pass
             }
         }
@@ -438,20 +454,74 @@ impl App {
     pub fn dashboard_right(&mut self) {
         if ! self.dashboard_on_content{
             self.dashboard_on_content = true;
+        }else{
+            match self.dashboard_selected {
+                1 => {  // New Cert
+                    match self.dashboard_content_cursor {
+                        4 => { // Cert Type
+                            if self.dashboard_newcert_type < 2{
+                                self.dashboard_newcert_type += 1;
+                            }
+                        }
+                        5 => { // Key Size
+                            if self.dashboard_newcert_keysize < 2{
+                                self.dashboard_newcert_keysize += 1;
+                            }
+                        }
+                        _ => {} //pass
+                    }
+                },
+                _ => {}, //pass
+            }
         }
     }
 
     pub fn dashboard_left(&mut self) {
         if self.dashboard_on_content{
-            self.dashboard_on_content = false;
+            match self.dashboard_selected {
+                1 => {  // New Cert
+                    match self.dashboard_content_cursor {
+                        4 => { // Cert Type
+                            self.dashboard_newcert_type = self.dashboard_newcert_type.saturating_sub(1);
+                        }
+                        5 => { // Key Size
+                            self.dashboard_newcert_keysize = self.dashboard_newcert_keysize.saturating_sub(1);
+                        }
+                        _ => {} //pass
+                    }
+                },
+                _ => {self.dashboard_on_content = false;}, // if not on any interactive field
+            }
         }
     }
 
-    pub fn dashboard_select(&mut self) {
+    pub fn dashboard_enter(&mut self) {
         if ! self.dashboard_on_content{
             self.dashboard_on_content = true;
         }else{
-            // ??
+            match self.dashboard_selected {
+                1 => { // New Cert
+                    match self.dashboard_content_cursor {
+                        6 => { // New Cert (Create)
+                            match self.dashboard_create_cert() {
+                                Ok(_) => {
+                                    let last_item = self.current_realm.as_ref().map(|realm| realm.certs.len()).unwrap().saturating_sub(1);
+                                    self.reset_form_create_cert();
+                                    self.dashboard_on_content = false;
+                                    self.dashboard_selected = &self.dashboard_static_menu.len() + last_item;
+                                },
+                                Err(e) => {
+                                    self.switch_to_error(e.to_string(), AppState::Dashboard);
+                                },
+                            }
+                        }
+                        _ => {} //pass
+                    }
+
+
+                }
+                _ => {} //pass
+            }
         }
     }
 
@@ -463,4 +533,140 @@ impl App {
             self.back_to_select_realm();
         }
     }
+
+    pub fn dashboard_input_char(&mut self, c: char) {
+        if self.dashboard_on_content{
+            match self.dashboard_selected {
+                1 => { // New cert
+                    let field = match self.dashboard_content_cursor {
+                        0 => &mut self.dashboard_newcert_cn,
+                        1 => &mut self.dashboard_newcert_altdns,
+                        2 => &mut self.dashboard_newcert_altip,
+                        3 => &mut self.dashboard_newcert_validuntil,
+                        _ => return, // Not an input field
+                    };
+                    match self.dashboard_content_cursor {
+                        2 => { // IP
+                            if field.len() < 255 && (c.is_ascii_digit() || vec!['.', ','].contains(&c)){
+                                field.push(c);
+                            }
+                        },
+                        3 => { // Valid Until
+                            if field.len() < 8 && c.is_ascii_digit(){
+                                field.push(c);
+                            }
+                        },
+                        _ => { //Other
+                            if field.len() < 255 && (c.is_ascii_alphanumeric() || vec!['.', ',', ' '].contains(&c)){
+                                field.push(c);
+                            }
+                        }
+                    }
+                }, 
+                _ => {}, //pass
+            }
+        }
+    }
+
+    pub fn dashboard_backspace(&mut self) {
+        if self.dashboard_on_content{
+            match self.dashboard_selected {
+                1 => { // New cert
+                    let field = match self.dashboard_content_cursor {
+                        0 => &mut self.dashboard_newcert_cn,
+                        1 => &mut self.dashboard_newcert_altdns,
+                        2 => &mut self.dashboard_newcert_altip,
+                        3 => &mut self.dashboard_newcert_altip,
+                        _ => return, // Not an input field
+                    };
+                    field.pop();
+                }, 
+                _ => {}, //pass
+            }
+
+        }
+
+    }
+
+    pub fn dashboard_create_cert(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        //BACKEND
+        // Create the realm using settings, then create the vault if not already existing
+
+        let altname_dns: Vec<String> = self.dashboard_newcert_altdns
+            .split(',')
+            .filter(|s| !s.is_empty())
+            .map(String::from)
+            .collect();
+
+        let altname_ip: Vec<String> = self.dashboard_newcert_altip
+            .split(',')
+            .filter(|s| !s.is_empty())
+            .map(String::from)
+            .collect();
+
+        let cert_type = get_cert_type(self.dashboard_newcert_type);
+        let key_size = get_key_size(self.dashboard_newcert_keysize);
+        let formatted_time = format_date(&self.dashboard_newcert_validuntil)?;
+
+        self.current_realm.as_mut().expect("Error: Realm is empty").add_cert(cert_type, key_size, &self.dashboard_newcert_cn, &formatted_time, &altname_dns, &altname_ip)?;
+        return encrypt_to_file(&self.current_realm.clone().unwrap().name.clone(), &self.password_text, self.current_realm.as_ref().unwrap(), true);
+    }
+
+    pub fn reset_form_create_cert(&mut self) {
+        self.dashboard_newcert_cn.clear();
+        self.dashboard_newcert_altdns.clear();
+        self.dashboard_newcert_altip.clear();
+        self.dashboard_newcert_validuntil.clear();
+        self.dashboard_newcert_type = 0; // Reset to Server
+        self.dashboard_newcert_keysize = 2; // Reset to 4096
+        self.dashboard_content_cursor = 0;
+    }
+
+}
+
+fn get_key_size( index_keysize : usize) -> KeySize {
+    match index_keysize {
+        0 => KeySize::Size1024,
+        1 => KeySize::Size2048,
+        2 => KeySize::Size4096,
+        _ => KeySize::Size2048, // Default
+    }
+}
+
+fn get_cert_type( index_keysize : usize) -> CertType {
+    match index_keysize {
+        0 => CertType::Server,
+        1 => CertType::Client,
+        2 => CertType::ServerAndClient,
+        _ => CertType::Server, // Default
+    }
+}
+
+fn format_date(date: &str) -> Result<String, Box<dyn std::error::Error>> {
+    // Take a date at format DDMMYYYY
+    // And return it as ASN1 date format: YYYYMMDDHHMMSSZ (Z=UTC)
+    if date.len() != 8 {
+        return Err("date has an invalid size".into());
+    }
+
+    // Extract day, month, and year using string slices
+    let day = &date[0..2];
+    let month = &date[2..4];
+    let year = &date[4..8];
+
+    let day_u8 = day.parse::<u8>()?;
+    let month_u8 = month.parse::<u8>()?;
+
+    if !(day_u8 >= 1 && day_u8 <= 31){
+        return Err("Day is invalid".into());
+    }
+
+    if !(month_u8 >= 1 && month_u8 <= 12){
+        return Err("Month is invalid".into());
+    }
+
+    // Create the ASN1 formatted date
+    let formatted_date = format!("{year}{month}{day}120000Z");
+
+    Ok(formatted_date)
 }

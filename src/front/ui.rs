@@ -108,7 +108,7 @@ fn draw_password_prompt(f: &mut Frame, app: &mut App, size: Rect) {
 }
 
 fn draw_new_realm_form(f: &mut Frame, app: &mut App, size: Rect) {
-    let area = popup_rect(50, 20, 60, 70, size); // Dynamic size: 60% width/height, min 50x20
+    let area = popup_rect(50, 20, 70, 80, size); // Dynamic size: 60% width/height, min 50x20
     let block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
@@ -120,8 +120,8 @@ fn draw_new_realm_form(f: &mut Frame, app: &mut App, size: Rect) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(6), // Realm block
-            Constraint::Length(10), // CA block
+            Constraint::Length(5), // Realm block
+            Constraint::Length(11), // CA block
             Constraint::Length(2), // Buttons
         ])
         .split(inner_area);
@@ -141,11 +141,9 @@ fn draw_new_realm_form(f: &mut Frame, app: &mut App, size: Rect) {
     let password_full = if app.nrf_cursor == 1 { "*".repeat(app.nrf_password.len()) + "_" } else { "*".repeat(app.nrf_password.len()) };
 
     let realm_lines = vec![
+        Line::from(format_with_ellipsis("Name: ", &name_full, available_width)).style(if app.nrf_cursor == 0 { Style::default().add_modifier(Modifier::BOLD) } else { Style::default() }),
         Line::from(""),
-        Line::from(format!("Name: {}", truncate_with_ellipsis(&name_full, available_width, "Name: ".len()) )).style(if app.nrf_cursor == 0 { Style::default().add_modifier(Modifier::BOLD) } else { Style::default() }),
-        Line::from(""),
-        Line::from(format!("Password: {}", truncate_with_ellipsis(&password_full, available_width, "Password: ".len()) )).style(if app.nrf_cursor == 1 { Style::default().add_modifier(Modifier::BOLD) } else { Style::default() }),
-        Line::from(""),
+        Line::from(format_with_ellipsis("Password: ", &password_full, available_width)).style(if app.nrf_cursor == 1 { Style::default().add_modifier(Modifier::BOLD) } else { Style::default() }),
     ];
     let realm_paragraph = Paragraph::new(realm_lines).wrap(Wrap { trim: true });
     f.render_widget(realm_paragraph, realm_inner);
@@ -162,21 +160,24 @@ fn draw_new_realm_form(f: &mut Frame, app: &mut App, size: Rect) {
     let common_name_full = if app.nrf_cursor == 2 { app.nrf_ca_common_name.clone() + "_" } else { app.nrf_ca_common_name.clone() };
     let organization_full = if app.nrf_cursor == 3 { app.nrf_ca_organization.clone() + "_" } else { app.nrf_ca_organization.clone() };
     let country_full = if app.nrf_cursor == 4 { app.nrf_ca_country.clone() + "_" } else { app.nrf_ca_country.clone() };
+    
+    let formatted_date = format_date(&app.nrf_valid_until.clone());
+    let valid_until_full = if app.nrf_cursor == 5 { formatted_date + "_" } else { formatted_date };
 
     let key_sizes = [1024, 2048, 4096];
     let ca_lines = vec![
+         Line::from(format_with_ellipsis("Common Name: ", &common_name_full, available_width)).style(if app.nrf_cursor == 2 { Style::default().add_modifier(Modifier::BOLD) } else { Style::default() }),
         Line::from(""),
-        Line::from(format!("Common Name: {}", truncate_with_ellipsis(&common_name_full, available_width, "Common Name: ".len()) )).style(if app.nrf_cursor == 2 { Style::default().add_modifier(Modifier::BOLD) } else { Style::default() }),
+        Line::from(format_with_ellipsis("Organization: ", &organization_full, available_width)).style(if app.nrf_cursor == 3 { Style::default().add_modifier(Modifier::BOLD) } else { Style::default() }),
         Line::from(""),
-        Line::from(format!("Organization: {}", truncate_with_ellipsis(&organization_full, available_width, "Organization: ".len()) )).style(if app.nrf_cursor == 3 { Style::default().add_modifier(Modifier::BOLD) } else { Style::default() }),
+        Line::from(format_with_ellipsis("Country: ", &country_full, available_width)).style(if app.nrf_cursor == 4 { Style::default().add_modifier(Modifier::BOLD) } else { Style::default() }),
         Line::from(""),
-        Line::from(format!("Country: {}", truncate_with_ellipsis(&country_full, available_width, "Country: ".len()) )).style(if app.nrf_cursor == 4 { Style::default().add_modifier(Modifier::BOLD) } else { Style::default() }),
+        Line::from(format_with_ellipsis("Valid Until (DD/MM/YYYY): ", &valid_until_full, available_width)).style(if app.nrf_cursor == 5 { Style::default().add_modifier(Modifier::BOLD) } else { Style::default() }),
         Line::from(""),
         Line::from(format!("Key Size: {} {} {}",
-            if app.nrf_cursor == 5 && app.nrf_ca_key_size_index > 0 { "←" } else { " " },
+            if app.nrf_cursor == 6 && app.nrf_ca_key_size_index > 0 { "←" } else { " " },
             key_sizes[app.nrf_ca_key_size_index],
-            if app.nrf_cursor == 5 && app.nrf_ca_key_size_index < key_sizes.len().saturating_sub(1) { "→" } else { " " })).style(if app.nrf_cursor == 5 { Style::default().add_modifier(Modifier::BOLD) } else { Style::default() }),
-        Line::from(""),
+            if app.nrf_cursor == 6 && app.nrf_ca_key_size_index < key_sizes.len().saturating_sub(1) { "→" } else { " " })).style(if app.nrf_cursor == 6 { Style::default().add_modifier(Modifier::BOLD) } else { Style::default() }),
     ];
     let ca_paragraph = Paragraph::new(ca_lines).wrap(Wrap { trim: true });
     f.render_widget(ca_paragraph, ca_inner);
@@ -187,16 +188,16 @@ fn draw_new_realm_form(f: &mut Frame, app: &mut App, size: Rect) {
         .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
         .split(chunks[2]);
 
-    let create_text = if app.nrf_cursor == 6 { "[Create]" } else { " Create " };
+    let create_text = if app.nrf_cursor == 7 { "[Create]" } else { " Create " };
     let create_paragraph = Paragraph::new(create_text)
         .alignment(Alignment::Center)
-        .style(if app.nrf_cursor == 6 { Style::default().add_modifier(Modifier::BOLD) } else { Style::default() });
+        .style(if app.nrf_cursor == 7 { Style::default().add_modifier(Modifier::BOLD) } else { Style::default() });
     f.render_widget(create_paragraph, button_chunks[0]);
 
-    let cancel_text = if app.nrf_cursor == 7 { "[Cancel]" } else { " Cancel " };
+    let cancel_text = if app.nrf_cursor == 8 { "[Cancel]" } else { " Cancel " };
     let cancel_paragraph     = Paragraph::new(cancel_text)
         .alignment(Alignment::Center)
-        .style(if app.nrf_cursor == 7 { Style::default().add_modifier(Modifier::BOLD) } else { Style::default() });
+        .style(if app.nrf_cursor == 8 { Style::default().add_modifier(Modifier::BOLD) } else { Style::default() });
     f.render_widget(cancel_paragraph, button_chunks[1]);
 
 }
@@ -217,10 +218,12 @@ fn draw_dashboard(f: &mut Frame, app: &mut App, size: Rect) {
     // Left panel: split into static menu and cert list
     let left_inner = chunks[0];
 
+    let static_len = app.dashboard_static_menu.len();
+
     let left_chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(app.dashboard_static_menu.len() as u16 + 2), // +2 for borders
+            Constraint::Length(static_len as u16 + 2), // +2 for borders
             Constraint::Min(1),
         ])
         .split(left_inner);
@@ -246,8 +249,8 @@ fn draw_dashboard(f: &mut Frame, app: &mut App, size: Rect) {
 
     let static_list = List::new(static_items)
         .block(Block::default().borders(Borders::NONE))
-        .highlight_style(Style::default().add_modifier(Modifier::BOLD))
-        .highlight_symbol("> ");
+        .highlight_style(if app.dashboard_selected < static_len { Style::default().add_modifier(Modifier::BOLD) }else { Style::default() })
+        .highlight_symbol(if app.dashboard_selected < static_len { "> " }else { "  " });
 
     let mut static_state = ListState::default();
     static_state.select(Some(app.dashboard_selected));
@@ -264,7 +267,7 @@ fn draw_dashboard(f: &mut Frame, app: &mut App, size: Rect) {
         .iter()
         .enumerate()
         .map(|(i, item)| {
-            let style = if i+app.dashboard_static_menu.len() == app.dashboard_selected
+            let style = if i + static_len == app.dashboard_selected
                                 && !app.dashboard_on_content {
                 Style::default().fg(Color::Black).bg(Color::White)
             } else {
@@ -276,11 +279,11 @@ fn draw_dashboard(f: &mut Frame, app: &mut App, size: Rect) {
 
     let cert_list = List::new(cert_items)
         .block(Block::default().borders(Borders::NONE))
-        .highlight_style(Style::default().add_modifier(Modifier::BOLD))
-        .highlight_symbol("> ");
+        .highlight_style(if app.dashboard_selected >= static_len { Style::default().add_modifier(Modifier::BOLD) }else { Style::default() })
+        .highlight_symbol(if app.dashboard_selected >= static_len { "> " }else { "  " });
 
     let mut cert_state = ListState::default();
-    cert_state.select(Some(app.dashboard_selected));
+    cert_state.select(Some(app.dashboard_selected.saturating_sub(static_len)));
 
     f.render_stateful_widget(cert_list, cert_inner, &mut cert_state);
 
@@ -295,27 +298,6 @@ fn draw_dashboard(f: &mut Frame, app: &mut App, size: Rect) {
 }
 
 /// helper function to create a popup rect with minimum size and percentage
-pub fn popup_rect(min_width: u16, min_height: u16, percent_x: u16, percent_y: u16, r: Rect) -> Rect {
-    let desired_width = ((r.width * percent_x) / 100).max(min_width).min(r.width);
-    let desired_height = ((r.height * percent_y) / 100).max(min_height).min(r.height);
-    let x = r.x + (r.width.saturating_sub(desired_width)) / 2;
-    let y = r.y + (r.height.saturating_sub(desired_height)) / 2;
-    Rect::new(x, y, desired_width, desired_height)
-}
-
-fn truncate_with_ellipsis(s: &str, available_width: usize, text_size: usize) -> String {
-    let max_len = available_width.saturating_sub(text_size+1); // +1 buffer
-    if s.len() <= max_len {
-
-        s.to_string()
-
-    } else {
-
-        format!("…{}", &s[s.len().saturating_sub(max_len)..]) // …
-
-    }
-
-}
 
 fn generate_dashboard_content(app: &mut App, inner_area: &Rect) ->  Box<dyn WidgetRef> {
     // dynamically fill the content (right box) of dashboard depending of the current selection
@@ -326,7 +308,7 @@ fn generate_dashboard_content(app: &mut App, inner_area: &Rect) ->  Box<dyn Widg
             return Box::new(mywidgets::ScrollableParagraph::new(text, app.scroll, app.max_scroll));
         },
         1 => {
-            return Box::new(mywidgets::NewCertForm::new(app.scroll, app.dashboard_newcert_type, app.dashboard_newcert_keysize, &app.dashboard_newcert_cn, &app.dashboard_newcert_altdns, &app.dashboard_newcert_altip));
+            return Box::new(mywidgets::NewCertForm::new(app.dashboard_on_content, app.dashboard_content_cursor, app.dashboard_newcert_type, app.dashboard_newcert_keysize, &app.dashboard_newcert_cn, &app.dashboard_newcert_altdns, &app.dashboard_newcert_altip, &app.dashboard_newcert_validuntil));
         },
         2 => {
             return Box::new(Paragraph::new("Static2")
@@ -347,7 +329,30 @@ fn generate_dashboard_content(app: &mut App, inner_area: &Rect) ->  Box<dyn Widg
     
 }
 
-fn update_scroll(app: &mut App, inner_area: &Rect, text: &String){
+pub fn popup_rect(min_width: u16, min_height: u16, percent_x: u16, percent_y: u16, r: Rect) -> Rect {
+    let desired_width = ((r.width * percent_x) / 100).max(min_width).min(r.width);
+    let desired_height = ((r.height * percent_y) / 100).max(min_height).min(r.height);
+    let x = r.x + (r.width.saturating_sub(desired_width)) / 2;
+    let y = r.y + (r.height.saturating_sub(desired_height)) / 2;
+    Rect::new(x, y, desired_width, desired_height)
+}
+
+
+pub fn format_with_ellipsis(prompt: &str, input: &str, available_width: usize) -> String {
+    let text_size = prompt.len();
+    let max_len = available_width.saturating_sub(text_size+1); // +1 buffer
+    if input.len() <= max_len {
+
+        return format!("{}{}", prompt, input.to_string());
+
+    } else {
+
+        return format!("{}…{}", &prompt, &input[input.len().saturating_sub(max_len)..]); // …
+
+    }
+}
+
+pub fn update_scroll(app: &mut App, inner_area: &Rect, text: &String){
     // Calculate scroll size
     
     // Calculate content height for scrollbar
@@ -365,4 +370,19 @@ fn update_scroll(app: &mut App, inner_area: &Rect, text: &String){
     if app.scroll > app.max_scroll{ // because of resizing
         app.scroll = app.max_scroll;
     }
+}
+
+pub fn format_date(input: &str) -> String {
+    let mut formatted = String::new();
+    
+    // Append characters to formatted string with appropriate slashes
+    for (i, c) in input.chars().enumerate() {
+        formatted.push(c);
+        // Add slashes accordingly
+        if i == 1 || i == 3 {
+            formatted.push('/');
+        }
+    }
+    
+    formatted
 }
