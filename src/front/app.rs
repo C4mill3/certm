@@ -827,7 +827,7 @@ impl App {
     pub fn exportcert_input_char(&mut self, c: char){
         match self.dashboard_content_cursor {
             0 => { // path input field
-                if self.export_cert_path.len() < 255 && (c.is_ascii_alphanumeric() || vec!['.', '\\', '/'].contains(&c)){
+                if self.export_cert_path.len() < 255 && (c.is_ascii_alphanumeric() || vec!['.', '\\', '/', '$', '(', ')', '~'].contains(&c)){
                     self.export_cert_path.push(c);
                 }
             },
