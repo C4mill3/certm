@@ -1,5 +1,5 @@
 use ratatui::{
-    Frame, Terminal, backend::CrosstermBackend, layout::{Alignment, Constraint, Direction, Layout, Rect}, style::{Color, Modifier, Style, Stylize}, symbols::DOT, text::{Line, Span}, widgets::{self, Block, BorderType, Borders, Clear, List, ListItem, ListState, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Widget, WidgetRef, Wrap, block::Title}
+    Frame, Terminal, backend::CrosstermBackend, layout::{Alignment, Constraint, Direction, Layout, Rect}, style::{Color, Modifier, Style, Stylize}, symbols::DOT, text::{Line, Span, ToText}, widgets::{self, Block, BorderType, Borders, Clear, List, ListItem, ListState, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Widget, WidgetRef, Wrap, block::Title}
 };
 
 // Import App and related types from the app module
@@ -34,7 +34,7 @@ pub fn ui_render(f: &mut Frame, app: &mut App) {
         AppState::PasswordPrompt => {
             match app.password_intent {
                 PasswordIntent::EnterRealm | PasswordIntent::DeleteRealm => {draw_select_realm(f, app, size, false)},
-                PasswordIntent::DeleteCert | PasswordIntent::CreateCert => {draw_dashboard(f, app, size)}
+                PasswordIntent::DeleteCert | PasswordIntent::CreateCert => {draw_dashboard(f, app, size, false)}
 
             }
             
@@ -44,7 +44,11 @@ pub fn ui_render(f: &mut Frame, app: &mut App) {
             draw_select_realm(f, app, size, false);
             draw_new_realm_form(f, app, size);
         }
-        AppState::Dashboard => draw_dashboard(f, app, size),
+        AppState::Dashboard => draw_dashboard(f, app, size, true),
+        AppState::ExportCert => {
+            draw_dashboard(f, app, size, false);
+            draw_export_cert(f, app, size);
+        },
     }
 }
 
@@ -113,17 +117,17 @@ fn draw_select_realm(f: &mut Frame, app: &mut App, size: Rect, tips : bool) {
 
 fn draw_password_prompt(f: &mut Frame, app: &mut App, size: Rect) {
     let area = popup_rect(25, 5, 40, 20, size);
-    let intent = match app.password_intent {
-        PasswordIntent::EnterRealm => {"Enter in"},
-        PasswordIntent::DeleteRealm => {"Delete"},
-        PasswordIntent::CreateCert => {"Generate"}
-        PasswordIntent::DeleteCert => {"Delete"}
+    let title = match app.password_intent {
+        PasswordIntent::EnterRealm => {format!("Enter in {}", app.realm_list[app.realm_selected].as_str())},
+        PasswordIntent::DeleteRealm => {format!("Delete Realm {}", app.realm_list[app.realm_selected].as_str())},
+        PasswordIntent::CreateCert => {"Generate New Cert".to_string()},
+        PasswordIntent::DeleteCert => {"Delete Cert".to_string()},
     };
     let block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
         .title_bottom(Line::from(vec!["Try".into(), "↵".red(), DOT.into(), "Esc".red(),]).right_aligned())
-        .title(format!("{} {}", intent, app.realm_list[app.realm_selected].as_str()));
+        .title(title);
 
     f.render_widget(Clear, area); // clear the background
     f.render_widget(&block, area);
@@ -233,12 +237,14 @@ fn draw_new_realm_form(f: &mut Frame, app: &mut App, size: Rect) {
 
 }
 
-fn draw_dashboard(f: &mut Frame, app: &mut App, size: Rect) {
+fn draw_dashboard(f: &mut Frame, app: &mut App, size: Rect, tips : bool) {
     let mut block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
         .title(Line::from(app.realm_list[app.realm_selected].as_str()).centered());
-    block = block.title_bottom(Line::from(generate_dashboard_tips(app.dashboard_selected, app.dashboard_on_content)).right_aligned());
+    if tips{
+        block = block.title_bottom(Line::from(generate_dashboard_tips(app.dashboard_selected, app.dashboard_on_content)).right_aligned());
+    }
     let inner_area = block.inner(size);
     f.render_widget(block, size);
 
@@ -370,7 +376,7 @@ fn generate_dashboard_tips(dashboard_selected: usize, on_content: bool) -> Vec<S
     match dashboard_selected {
         0 => {
             if on_content{
-                tips .splice(4..4,vec![DOT.into(), "E".red(), "xport".into(), DOT.into(),]);
+                tips.splice(4..4,vec![DOT.into(), "E".red(), "xport".into(),]);
             }
             return tips;
         },
@@ -391,6 +397,37 @@ fn generate_dashboard_tips(dashboard_selected: usize, on_content: bool) -> Vec<S
         },
     }
     
+}
+
+fn draw_export_cert(f: &mut Frame, app: &mut App, size: Rect) {
+    let area = popup_rect(48, 7, 40, 20, size);
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .title_bottom(Line::from(vec!["Select".into(), "↵".red(), DOT.into(), "Esc".red(),]).right_aligned())
+        .title("Export");
+
+    f.render_widget(Clear, area); // clear the background
+    f.render_widget(&block, area);
+
+    // Calculate available width for Realm fields
+    let available_width = block.inner(area).width as usize;
+
+    let path_full = if app.dashboard_content_cursor == 0 { app.export_cert_path.clone() + "_" } else { app.export_cert_path.clone() };
+    let export_private_full = if app.export_cert_private {"✓"} else{"𐄂"};
+
+    let export_button_full = if app.dashboard_content_cursor == 2 {"[Export]"} else {"Export"};
+
+    let inner_area = block.inner(area);
+    let text = vec![
+        Line::from(format_with_ellipsis("Folder: ", &path_full, available_width)).style(if app.dashboard_content_cursor == 0 { Style::default().add_modifier(Modifier::BOLD) } else { Style::default() }),
+        Line::from(""),
+        Line::from(format!("Export Private Key: {}", export_private_full)).style(if app.dashboard_content_cursor == 1 { Style::default().add_modifier(Modifier::BOLD) } else { Style::default() }),
+        Line::from(""),
+        Line::from(export_button_full).alignment(Alignment::Center),
+    ];
+    let paragraph = Paragraph::new(text).wrap(Wrap { trim: true });
+    f.render_widget(paragraph, inner_area);
 }
 
 pub fn popup_rect(min_width: u16, min_height: u16, percent_x: u16, percent_y: u16, r: Rect) -> Rect {

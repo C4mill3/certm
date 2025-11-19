@@ -10,7 +10,7 @@ use ratatui::{
 use std::{io};
 
 // Backend
-use crate::tools::{self};
+use crate::tools::{self, utility::get_working_directory};
 use tools::certs_manager::{Realm, Cert, KeySize, CertType};
 use tools::mycrypt::{encrypt_to_file, decrypt_from_file, delete_encrypted_file};
 
@@ -21,6 +21,7 @@ pub enum AppState {
     PasswordPrompt,
     NewRealmForm,
     Dashboard,
+    ExportCert,
 }
 
 #[derive(Clone)]
@@ -51,7 +52,6 @@ pub struct App {
     pub dashboard_static_menu: Vec<String>,
     pub dashboard_selected: usize,
     pub dashboard_on_content: bool, // is focus on content box
-
     pub dashboard_content_cursor: usize,
 
     pub dashboard_newcert_cn: String, // Common Name
@@ -70,6 +70,10 @@ pub struct App {
     pub nrf_ca_country: String,
     pub nrf_valid_until: String,
     pub nrf_ca_key_size_index: usize, // 0: 1024, 1: 2048, 2: 4096
+
+    pub export_cert_path: String,
+    pub export_cert_private: bool,
+
     pub last_error: String,
     pub error_fallback_state: AppState,
 }
@@ -118,6 +122,9 @@ impl App {
             nrf_ca_country: String::new(),
             nrf_valid_until: String::new(),
             nrf_ca_key_size_index: 2, // Default to 4096
+
+            export_cert_path: String::new(),
+            export_cert_private: false,
             
             last_error: String::new(),
             error_fallback_state:AppState::SelectRealm, // Default
@@ -171,7 +178,7 @@ impl App {
                             _ => {}
                         },
                         AppState::PasswordPrompt => match key.code {
-                                KeyCode::Enter => self.password_submit(),
+                            KeyCode::Enter => self.password_submit(),
                             KeyCode::Esc => self.password_escape(),
                             KeyCode::Backspace => {
                                 self.password_text.pop();
@@ -209,6 +216,23 @@ impl App {
                             KeyCode::Esc => self.dashboard_escape(),
                             KeyCode::Backspace | KeyCode::Delete => self.dashboard_backspace(),
                             KeyCode::Char(c) => self.dashboard_input_char(c),
+                            _ => {}
+                        },
+                        AppState::ExportCert => match key.code {
+                            KeyCode::Down => {
+                                if self.dashboard_content_cursor < 2{
+                                    self.dashboard_content_cursor += 1;
+                                }
+                            },
+                            KeyCode::Up => {
+                                self.dashboard_content_cursor = self.dashboard_content_cursor.saturating_sub(1);
+                            },
+                            KeyCode::Enter => self.exportcert_enter(),
+                            KeyCode::Esc => {
+                                self.state = AppState::Dashboard;
+                            },
+                            KeyCode::Backspace => self.exportcert_backspace(),
+                            KeyCode::Char(c) => self.exportcert_input_char(c),
                             _ => {}
                         },
                     }
@@ -674,7 +698,12 @@ impl App {
                         }
                     }
                 }, 
-                0 | 2 | 3 => {}, // Static
+                2 | 3 => {}, // Static
+                0 => { // CA Info
+                    if vec!['e', 'E'].contains(&c){ // Export
+                        self.switch_to_export();
+                    }
+                },
                 _ => { // Cert
                     if vec!['d', 'D'].contains(&c){ // Delete
                         self.password_intent =PasswordIntent::DeleteCert;
@@ -743,7 +772,7 @@ impl App {
         return encrypt_to_file(&self.current_realm.clone().unwrap().name.clone(), &self.password_text, self.current_realm.as_ref().unwrap(), true);
     }
 
-    pub fn reset_form_create_cert(&mut self) {
+    pub fn reset_form_create_cert(&mut self){
         self.dashboard_newcert_cn.clear();
         self.dashboard_newcert_altdns.clear();
         self.dashboard_newcert_altip.clear();
@@ -751,6 +780,50 @@ impl App {
         self.dashboard_newcert_type = 0; // Reset to Server
         self.dashboard_newcert_keysize = 2; // Reset to 4096
         self.dashboard_content_cursor = 0;
+    }
+
+    // Export
+
+    pub fn switch_to_export(&mut self){
+        self.state = AppState::ExportCert;
+        self.dashboard_content_cursor = 0;
+        match get_working_directory(){
+            Ok(path) => {self.export_cert_path = path;},
+            Err(e) =>{
+                self.switch_to_error(e.to_string(), AppState::ExportCert);
+            }
+        }
+    }
+
+    pub fn exportcert_enter(&mut self){
+        match self.dashboard_content_cursor {
+            0 => {}, //pass
+            1 => {self.export_cert_private = !self.export_cert_private},
+            2 => { // Button Export
+
+            }
+            _ => {} //pass
+        }
+    }
+
+    pub fn exportcert_backspace(&mut self){
+        match self.dashboard_content_cursor {
+            0 => { // path input field
+                self.export_cert_path.pop();
+            },
+            _ => {} //pass
+        }
+    }
+
+    pub fn exportcert_input_char(&mut self, c: char){
+        match self.dashboard_content_cursor {
+            0 => { // path input field
+                if self.export_cert_path.len() < 255 && (c.is_ascii_alphanumeric() || vec!['.', '\\', '/'].contains(&c)){
+                    self.export_cert_path.push(c);
+                }
+            },
+            _ => {} //pass
+        }        
     }
 
 }

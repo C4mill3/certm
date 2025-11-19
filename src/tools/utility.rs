@@ -1,5 +1,5 @@
 use std::process::Command;
-use std::str;
+use std::{env, str};
 use std::{io, path::Path, path::PathBuf};
 use std::fs::{self, set_permissions, Permissions, File};
 use std::os::unix::fs::PermissionsExt; // For Unix only
@@ -127,4 +127,9 @@ pub fn write_to_file(filepath: &Path, data: &[u8], permissions: u32, override_ex
 
 pub fn delete_file(filepath: &Path) -> Result<(), Box<dyn std::error::Error>> {
     fs::remove_file(filepath).map_err(|e| e.into())
+}
+
+pub fn get_working_directory() -> Result<String, Box<dyn std::error::Error>> {
+    let path = env::current_dir()?;
+    Ok(path.to_string_lossy().into_owned())
 }
