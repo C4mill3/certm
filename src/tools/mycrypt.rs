@@ -38,7 +38,7 @@ pub fn encrypt_to_file (name : &str, password: &str, data : &Realm, override_exi
     combined_data.extend(encrypted_data);
 
     // Write to file (CA_VAULT + name.dat)
-    let path_build = &resolve_path(CA_VAULT)
+    let path_build = &resolve_path(CA_VAULT)?
     .join(format!("{}.dat",sanitize_name(name)));
     write_to_file(&path_build, &combined_data, 0o600, override_existing)?;
     Ok(())
@@ -47,7 +47,7 @@ pub fn encrypt_to_file (name : &str, password: &str, data : &Realm, override_exi
 pub fn decrypt_from_file (name : &str, password: &str) -> Result<Realm, Box<dyn std::error::Error>> {
 
     // read file
-    let path_build = &resolve_path(CA_VAULT)
+    let path_build = &resolve_path(CA_VAULT)?
         .join(format!("{}.dat", sanitize_name(name)));
 
     let file_content = std::fs::read(path_build)?;
@@ -79,7 +79,7 @@ pub fn decrypt_from_file (name : &str, password: &str) -> Result<Realm, Box<dyn 
 
 pub fn delete_encrypted_file(name : &str) -> Result<(), Box<dyn std::error::Error>> {
     // Used to centralize interaction with realm file
-    let path_build = &resolve_path(CA_VAULT)
+    let path_build = &resolve_path(CA_VAULT)?
         .join(format!("{}.dat",sanitize_name(name)));
     return delete_file(path_build);
 }

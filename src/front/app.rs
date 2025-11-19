@@ -10,7 +10,8 @@ use ratatui::{
 use std::{io};
 
 // Backend
-use crate::tools::{self, utility::get_working_directory};
+use crate::tools;
+use tools::utility::{get_working_directory, path_exist, resolve_path, write_to_file};
 use tools::certs_manager::{Realm, Cert, KeySize, CertType};
 use tools::mycrypt::{encrypt_to_file, decrypt_from_file, delete_encrypted_file};
 
@@ -708,6 +709,8 @@ impl App {
                     if vec!['d', 'D'].contains(&c){ // Delete
                         self.password_intent =PasswordIntent::DeleteCert;
                         self.state = AppState::PasswordPrompt;
+                    }else if vec!['e', 'E'].contains(&c){ // Export
+                        self.switch_to_export();
                     }
                 },
             }
@@ -800,7 +803,13 @@ impl App {
             0 => {}, //pass
             1 => {self.export_cert_private = !self.export_cert_private},
             2 => { // Button Export
-
+                match self.exportcert_action(){
+                    Ok(_) => {
+                        self.dashboard_content_cursor = 0;
+                        self.state = AppState::Dashboard;
+                    },
+                    Err(e) => self.switch_to_error(e.to_string(), AppState::ExportCert),
+                }
             }
             _ => {} //pass
         }
@@ -824,6 +833,36 @@ impl App {
             },
             _ => {} //pass
         }        
+    }
+
+    pub fn exportcert_action(&mut self) -> Result<(), Box<dyn std::error::Error>>{
+        let mut path = resolve_path(self.export_cert_path.as_ref())?;
+        if path_exist(&path)? {
+            let cert: Cert;
+            if self.dashboard_selected == 0 { // CA
+                cert = self.current_realm.as_ref().expect("Error: Realm is empty").ca.clone();
+            }else{ // Cert
+                let cert_id = self.dashboard_selected.saturating_sub(4);
+                cert = self.current_realm.as_ref().expect("Error: Realm is empty").certs[cert_id].clone();
+            }
+            let name = cert.get_subject_name()?;
+            let cert_pem = cert.get_cert_txt()?;
+            path = path.join(name);
+
+            if self.export_cert_private{ // Also Export Private
+                let cert_key = cert.get_private_txt()?;
+                path.set_extension("key");
+                write_to_file(&path, cert_key.as_bytes(), 0o600, false)?;
+            }
+
+            path.set_extension("pem");
+            write_to_file(&path, cert_pem.as_bytes(), 0o600, self.export_cert_private)?; // self.export_cert_private allow to remove error msg if already exported but forgot private
+
+
+        }else {
+            return Err(Box::from("Path does not exist"));
+        }
+        Ok(())
     }
 
 }

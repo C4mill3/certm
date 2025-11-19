@@ -271,7 +271,7 @@ impl Realm {
     }
 
     pub fn list() -> Result<Vec<String>, Box<dyn std::error::Error>>{
-        let vaults = list_in_path(&resolve_path(CA_VAULT), FSItemType::Files)?;
+        let vaults = list_in_path(&resolve_path(CA_VAULT)?, FSItemType::Files)?;
         let mut formatted: Vec<String> = vaults
             .iter()
             .map(|s| s.trim_end_matches(".dat").into())

@@ -90,9 +90,9 @@ pub fn sanitize_name(filename: &str) -> String {
     }
 }
 
-pub fn resolve_path(path: &str) -> PathBuf {
-    let resolved_path = shellexpand::tilde(path).to_string();
-    PathBuf::from(resolved_path)
+pub fn resolve_path(path: &str) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    let resolved_path = shellexpand::full(path)?.to_string();
+    Ok(PathBuf::from(resolved_path))
 }
 
 pub fn create_folder(path: &Path, permissions: u32) -> Result<(), Box<dyn std::error::Error>> {
