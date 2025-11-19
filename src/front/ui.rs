@@ -1,5 +1,5 @@
 use ratatui::{
-    Frame, Terminal, backend::CrosstermBackend, layout::{Alignment, Constraint, Direction, Layout, Rect}, style::{Color, Modifier, Style, Stylize}, symbols::DOT, text::Line, widgets::{self, Block, BorderType, Borders, Clear, List, ListItem, ListState, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Widget, WidgetRef, Wrap, block::Title}
+    Frame, Terminal, backend::CrosstermBackend, layout::{Alignment, Constraint, Direction, Layout, Rect}, style::{Color, Modifier, Style, Stylize}, symbols::DOT, text::{Line, Span}, widgets::{self, Block, BorderType, Borders, Clear, List, ListItem, ListState, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Widget, WidgetRef, Wrap, block::Title}
 };
 
 // Import App and related types from the app module
@@ -32,7 +32,12 @@ pub fn ui_render(f: &mut Frame, app: &mut App) {
         AppState::ErrorPrompt => draw_error_prompt(f, app, size),
         AppState::SelectRealm => draw_select_realm(f, app, size, true),
         AppState::PasswordPrompt => {
-            draw_select_realm(f, app, size, false);
+            match app.password_intent {
+                PasswordIntent::EnterRealm | PasswordIntent::DeleteRealm => {draw_select_realm(f, app, size, false)},
+                PasswordIntent::DeleteCert | PasswordIntent::CreateCert => {draw_dashboard(f, app, size)}
+
+            }
+            
             draw_password_prompt(f, app, size);
         },
         AppState::NewRealmForm => {
@@ -110,7 +115,9 @@ fn draw_password_prompt(f: &mut Frame, app: &mut App, size: Rect) {
     let area = popup_rect(25, 5, 40, 20, size);
     let intent = match app.password_intent {
         PasswordIntent::EnterRealm => {"Enter in"},
-        PasswordIntent::DeleteRealm => {"Delete"}
+        PasswordIntent::DeleteRealm => {"Delete"},
+        PasswordIntent::CreateCert => {"Generate"}
+        PasswordIntent::DeleteCert => {"Delete"}
     };
     let block = Block::default()
         .borders(Borders::ALL)
@@ -227,10 +234,11 @@ fn draw_new_realm_form(f: &mut Frame, app: &mut App, size: Rect) {
 }
 
 fn draw_dashboard(f: &mut Frame, app: &mut App, size: Rect) {
-    let block = Block::default()
+    let mut block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
         .title(Line::from(app.realm_list[app.realm_selected].as_str()).centered());
+    block = block.title_bottom(Line::from(generate_dashboard_tips(app.dashboard_selected, app.dashboard_on_content)).right_aligned());
     let inner_area = block.inner(size);
     f.render_widget(block, size);
 
@@ -349,6 +357,37 @@ fn generate_dashboard_content(app: &mut App, inner_area: &Rect) ->  Box<dyn Widg
             let text = app.current_realm.as_ref().unwrap().certs[cert_id].get_info_txt().unwrap();
             update_scroll(app, &inner_area, &text);
             return Box::new(mywidgets::ScrollableParagraph::new(text, app.scroll, app.max_scroll));
+        },
+    }
+    
+}
+
+fn generate_dashboard_tips(dashboard_selected: usize, on_content: bool) -> Vec<Span<'static>> {
+    // dynamically write the tips for the dashboard AppState
+    let mut tips: Vec<Span<'_>> = vec!["↑↓".red(), DOT.into(),
+            "Select".into(), "↵".red(), DOT.into(),
+            "Esc".red(),];
+    match dashboard_selected {
+        0 => {
+            if on_content{
+                tips .splice(4..4,vec![DOT.into(), "E".red(), "xport".into(), DOT.into(),]);
+            }
+            return tips;
+        },
+        1 => {
+            return tips;
+        },
+        2 => {
+            return tips;
+        },
+        3 => {
+            return tips;
+        },
+        _ => { // x > 3 -> Cert
+            if on_content{
+                tips.splice(4..4,vec![DOT.into(), "E".red(), "xport".into(), DOT.into(), "D".red(), "elete".into(),]);
+            }
+            return tips;
         },
     }
     
