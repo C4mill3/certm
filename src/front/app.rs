@@ -287,16 +287,22 @@ impl App {
         self.state = AppState::SelectRealm
     }
 
-    pub fn realm_select_action(&mut self) {
-        self.password_text.clear();
-        self.password_intent = PasswordIntent::EnterRealm;
-        self.state = AppState::PasswordPrompt;
+    pub fn realm_select_action(&mut self){
+        if self.realm_list.len() != 0{
+            self.password_text.clear();
+            self.password_intent = PasswordIntent::EnterRealm;
+            self.state = AppState::PasswordPrompt;
+        }else{
+            self.switch_to_error("There is currently no realm.\n Use 'N' to create one.".into(), AppState::SelectRealm);
+        }
     }
 
     pub fn realm_delete_action(&mut self) {
-        self.password_text.clear();
-        self.password_intent = PasswordIntent::DeleteRealm;
-        self.state = AppState::PasswordPrompt;
+        if self.realm_list.len() != 0{
+            self.password_text.clear();
+            self.password_intent = PasswordIntent::DeleteRealm;
+            self.state = AppState::PasswordPrompt;
+        }
     }
 
     // Password
@@ -351,11 +357,11 @@ impl App {
                         // Adding a new cert
                         match self.dashboard_create_cert() {
                             Ok(_) => {
-                                let last_item = self.current_realm.as_ref().map(|realm| realm.certs.len()).unwrap().saturating_sub(1);
+                                let last_item = self.current_realm.as_ref().map(|realm| realm.certs.len()).unwrap();
                                 self.reset_form_create_cert();
                                 self.state=AppState::Dashboard;
                                 self.dashboard_on_content = false;
-                                self.dashboard_selected = &self.dashboard_static_menu.len() + last_item;
+                                self.dashboard_selected = &self.dashboard_static_menu.len().saturating_sub(1) + self.current_realm.as_ref().map(|realm| realm.certs.len()).unwrap();
                             },
                             Err(e) => {
                                 self.switch_to_error(e.to_string(), AppState::Dashboard);
@@ -863,6 +869,15 @@ impl App {
             return Err(Box::from("Path does not exist"));
         }
         Ok(())
+    }
+
+    fn get_dashboard_menu_len(&mut self) -> usize {
+        return self.dashboard_static_menu.len().saturating_sub(1) + self.current_realm.as_ref().map(|realm| realm.certs.len()).unwrap()
+    }
+
+    fn get_selected_cert(&mut self) -> usize {
+        return self.dashboard_selected - self.dashboard_static_menu.len()
+
     }
 
 }
