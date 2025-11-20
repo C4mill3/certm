@@ -4,7 +4,7 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode, size, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use ratatui::{
-    Frame, Terminal, backend::CrosstermBackend, layout::{Alignment, Constraint, Direction, Layout, Rect}, style::{Color, Modifier, Style, Stylize}, symbols::{DOT, half_block::UPPER}, text::Line, widgets::{self, Block, BorderType, Borders, Clear, List, ListItem, ListState, Paragraph, Wrap, block::Title}
+    Terminal, backend::CrosstermBackend
 };
 
 use std::{io};
@@ -382,7 +382,7 @@ impl App {
                         match self.dashboard_remove_cert() {
                             Ok(_) => {
                                 let realm_len = self.current_realm.as_ref().map(|realm| realm.certs.len()).unwrap_or(0);
-                                let total_len = self.dashboard_static_menu.len().saturating_sub(1) + realm_len;
+                                let total_len = self.get_selected_cert();
                                 if realm_len == 0{ // No more Cert
                                     self.dashboard_selected = self.dashboard_static_menu.len().saturating_sub(1);
                                 }else if self.dashboard_selected > total_len {
@@ -580,8 +580,7 @@ impl App {
             self.scroll=0; // reset scroll when changing view
             self.dashboard_content_cursor=0; // reset cursor when changing view
 
-            let realm_len = self.current_realm.as_ref().map(|realm| realm.certs.len()).unwrap_or(0);
-            let total_len = self.dashboard_static_menu.len() + realm_len;
+            let total_len = self.get_selected_cert();
             if self.dashboard_selected < total_len.saturating_sub(1) {
                 self.dashboard_selected += 1;
             }
@@ -774,7 +773,7 @@ impl App {
         //BACKEND
         // Remove the cert and override the vault
 
-        let cert_id = self.dashboard_selected.saturating_sub(4);
+        let cert_id = self.get_selected_cert();
 
         self.current_realm.as_mut().expect("Error: Realm is empty").remove_cert(cert_id)?;
         return encrypt_to_file(&self.current_realm.clone().unwrap().name.clone(), &self.password_text, self.current_realm.as_ref().unwrap(), true);
@@ -847,7 +846,7 @@ impl App {
             if self.dashboard_selected == 0 { // CA
                 cert = self.current_realm.as_ref().expect("Error: Realm is empty").ca.clone();
             }else{ // Cert
-                let cert_id = self.dashboard_selected.saturating_sub(4);
+                let cert_id = self.get_selected_cert();
                 cert = self.current_realm.as_ref().expect("Error: Realm is empty").certs[cert_id].clone();
             }
             let name = cert.get_subject_name()?;
@@ -870,12 +869,12 @@ impl App {
         Ok(())
     }
 
-    fn get_dashboard_menu_len(&mut self) -> usize {
+    pub fn get_dashboard_menu_len(&mut self) -> usize {
         return self.dashboard_static_menu.len().saturating_sub(1) + self.current_realm.as_ref().map(|realm| realm.certs.len()).unwrap()
     }
 
-    fn get_selected_cert(&mut self) -> usize {
-        return self.dashboard_selected - self.dashboard_static_menu.len()
+    pub fn get_selected_cert(&mut self) -> usize {
+        return self.dashboard_selected.saturating_sub(self.dashboard_static_menu.len());
 
     }
 

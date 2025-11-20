@@ -1,4 +1,3 @@
-use std::process::Command;
 use std::{env, str};
 use std::{io, path::Path, path::PathBuf};
 use std::fs::{self, set_permissions, Permissions, File};
@@ -13,20 +12,6 @@ pub enum FSItemType {
     All,
     Files,
     Directory
-}
-
-pub fn run_command(command : &str, args : &[&str]) -> String {
-    let mut construct_command = Command::new(command);
-    if args.len() > 0 {
-        construct_command.args(args);
-    }
-    let output = construct_command
-        .output()
-        .expect("failed");
-
-    let stdout = str::from_utf8(&output.stdout).expect("Invalid UTF-8 sequence");
-
-    return stdout.to_string(); 
 }
 
 pub fn list_in_path(path: &Path, filter : FSItemType) -> Result<Vec<String>, Box<dyn std::error::Error>> {

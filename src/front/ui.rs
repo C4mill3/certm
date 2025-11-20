@@ -1,5 +1,5 @@
 use ratatui::{
-    Frame, Terminal, backend::CrosstermBackend, layout::{Alignment, Constraint, Direction, Layout, Rect}, style::{Color, Modifier, Style, Stylize}, symbols::DOT, text::{Line, Span, ToText}, widgets::{self, Block, BorderType, Borders, Clear, List, ListItem, ListState, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Widget, WidgetRef, Wrap, block::Title}
+    Frame, layout::{Alignment, Constraint, Direction, Layout, Rect}, style::{Color, Modifier, Style, Stylize}, symbols::DOT, text::{Line, Span}, widgets::{Block, BorderType, Borders, Clear, List, ListItem, ListState, Paragraph, Widget, WidgetRef, Wrap}
 };
 
 // Import App and related types from the app module
@@ -359,7 +359,7 @@ fn generate_dashboard_content(app: &mut App, inner_area: &Rect) ->  Box<dyn Widg
                 .alignment(Alignment::Center));
         },
         _ => { // x > 3 -> Cert
-            let cert_id = app.dashboard_selected.saturating_sub(app.dashboard_static_menu.len());
+            let cert_id = app.get_selected_cert();
             let text = app.current_realm.as_ref().unwrap().certs[cert_id].get_info_txt().unwrap();
             update_scroll(app, &inner_area, &text);
             return Box::new(mywidgets::ScrollableParagraph::new(text, app.scroll, app.max_scroll));

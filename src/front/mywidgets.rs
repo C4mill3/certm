@@ -1,9 +1,6 @@
 use ratatui::{
-    buffer::Buffer, layout::{Constraint, Direction, Layout, Rect}, prelude::*, widgets::{Block, BorderType, Borders, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Widget, WidgetRef, Wrap}
+    buffer::Buffer, layout::{Constraint, Direction, Layout, Rect}, prelude::*, widgets::{Block, Borders, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Widget, WidgetRef, Wrap}
 };
-
-use crate::tools::{self};
-use tools::certs_manager::{Realm, Cert, KeySize, CertType};
 
 use super::ui::{format_with_ellipsis, format_date};
 
