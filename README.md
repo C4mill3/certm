@@ -1,1 +1,1 @@
-# Self Signed Cert & Autority Manager - SSCAM
+# Rust Cert Manager
