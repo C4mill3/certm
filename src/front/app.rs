@@ -357,11 +357,10 @@ impl App {
                         // Adding a new cert
                         match self.dashboard_create_cert() {
                             Ok(_) => {
-                                let last_item = self.current_realm.as_ref().map(|realm| realm.certs.len()).unwrap();
                                 self.reset_form_create_cert();
                                 self.state=AppState::Dashboard;
                                 self.dashboard_on_content = false;
-                                self.dashboard_selected = &self.dashboard_static_menu.len().saturating_sub(1) + self.current_realm.as_ref().map(|realm| realm.certs.len()).unwrap();
+                                self.dashboard_selected = self.get_dashboard_menu_len();
                             },
                             Err(e) => {
                                 self.switch_to_error(e.to_string(), AppState::Dashboard);

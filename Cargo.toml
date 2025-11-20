@@ -1,6 +1,7 @@
 [package]
 name = "certm"
 version = "0.1.0"
+authors = ["C4mill3"]
 edition = "2024"    
 
 
