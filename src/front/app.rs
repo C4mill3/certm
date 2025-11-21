@@ -382,7 +382,7 @@ impl App {
                         match self.dashboard_remove_cert() {
                             Ok(_) => {
                                 let realm_len = self.current_realm.as_ref().map(|realm| realm.certs.len()).unwrap_or(0);
-                                let total_len = self.get_selected_cert();
+                                let total_len = self.get_dashboard_menu_len();
                                 if realm_len == 0{ // No more Cert
                                     self.dashboard_selected = self.dashboard_static_menu.len().saturating_sub(1);
                                 }else if self.dashboard_selected > total_len {
@@ -579,9 +579,8 @@ impl App {
         if ! self.dashboard_on_content {
             self.scroll=0; // reset scroll when changing view
             self.dashboard_content_cursor=0; // reset cursor when changing view
-
-            let total_len = self.get_selected_cert();
-            if self.dashboard_selected < total_len.saturating_sub(1) {
+            let total_len = self.get_dashboard_menu_len();
+            if self.dashboard_selected < total_len{
                 self.dashboard_selected += 1;
             }
         }else{
