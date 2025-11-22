@@ -53,7 +53,7 @@ pub fn list_in_path(path: &Path, filter : FSItemType) -> Result<Vec<String>, Box
 }
 
 pub fn path_exist(path: &Path) -> Result<bool, io::Error> {
-    if path.is_dir() || path.is_file(){
+    if path.exists(){
         return Ok(true);
     }else {
         return Ok(false);
@@ -61,8 +61,9 @@ pub fn path_exist(path: &Path) -> Result<bool, io::Error> {
 }
 
 pub fn read_file(filepath: &str) -> Result<String, Box<dyn std::error::Error>> {
-    if ! path_exist(&resolve_path(filepath)?)?{
-        return Err(Box::from(format!("Path {} does not exist", filepath)));
+    let path = &resolve_path(filepath)?;
+    if !path_exist(path)?{
+        return Err(Box::from(format!("Path {:?} does not exist", path)));
     }
     return Ok(fs::read_to_string(filepath)?);
 }

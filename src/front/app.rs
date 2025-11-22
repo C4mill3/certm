@@ -31,6 +31,7 @@ pub enum PasswordIntent {
     EnterRealm,
     DeleteRealm,
     CreateCert,
+    ImportCert,
     DeleteCert,
 }
 
@@ -62,7 +63,10 @@ pub struct App {
     pub dashboard_newcert_validuntil: String, // Valid Until
     pub dashboard_newcert_type: usize, // 0: Server, 1: Client, 2: ServerAndClient
     pub dashboard_newcert_keysize: usize, // 0: 1024, 1: 2048, 2: 4096
-
+    
+    pub dashboard_newcert_pem_path: String, // Import Cert Pem
+    pub dashboard_newcert_key_path: String, // Import Cert Key
+    
     // Fields for NewRealmForm (nrf)
     pub nrf_cursor: usize, // 0: Name, 1: Password, 2: Common Name, 3: Organization, 4: Country, 5: Valid Until, 6: Key Size, 7: Cancel, 8: Create
     pub nrf_name: String,
@@ -110,7 +114,6 @@ impl App {
             dashboard_selected: 0,
             dashboard_on_content: false,
             dashboard_content_cursor: 0,
-
     
             dashboard_newcert_cn: String::new(),
             dashboard_newcert_altdns: String::new(),
@@ -118,6 +121,9 @@ impl App {
             dashboard_newcert_validuntil: String::new(),
             dashboard_newcert_type: 0,
             dashboard_newcert_keysize: 2,
+
+            dashboard_newcert_pem_path: String::new(),
+            dashboard_newcert_key_path: String::new(),
 
             nrf_cursor: 0,
             nrf_name: String::new(),
@@ -328,7 +334,7 @@ impl App {
     pub fn password_escape(&mut self){
         match self.password_intent {
             PasswordIntent::EnterRealm | PasswordIntent::DeleteRealm => {self.back_to_select_realm()},
-            PasswordIntent::DeleteCert | PasswordIntent::CreateCert => {
+            PasswordIntent::DeleteCert | PasswordIntent::CreateCert | PasswordIntent::ImportCert => {
                 self.password_text.clear();
                 self.state=AppState::Dashboard;
             }
@@ -390,7 +396,31 @@ impl App {
                         self.switch_to_error(e.to_string(), AppState::PasswordPrompt);
                     },
                 }
-            }
+            },
+            PasswordIntent::ImportCert => {
+                // Checking file password match
+                let filename = &self.realm_list[self.realm_selected];
+                let realm_decode = decrypt_from_file(&filename, &self.password_text);
+                match realm_decode { // Done to check password
+                    Ok(_) => {
+                        // Adding a new cert
+                        match self.dashboard_import_cert() {
+                            Ok(_) => {
+                                self.reset_form_import_cert();
+                                self.state=AppState::Dashboard;
+                                self.dashboard_on_content = false;
+                                self.dashboard_selected = self.get_dashboard_menu_len();
+                            },
+                            Err(e) => {
+                                self.switch_to_error(e.to_string(), AppState::Dashboard);
+                            },
+                        }
+                    },
+                    Err(e) => {
+                        self.switch_to_error(e.to_string(), AppState::PasswordPrompt);
+                    },
+                }
+            },
             PasswordIntent::DeleteCert => {
                 // Checking file password match
                 let filename = &self.realm_list[self.realm_selected];
@@ -577,7 +607,7 @@ impl App {
                     _ => return, // Not an input field
                 };
                 
-                if field.len() < 255 && (c.is_ascii_alphanumeric() || vec!['.', '\\', '/', '$', '(', ')', '~'].contains(&c)){
+                if field.len() < 255 && (c.is_ascii_alphanumeric() || vec!['.', '\\', '/', '$', '(', ')', '[', ']', '~', '_', '-'].contains(&c)){
                     field.push(c);
                 }
             },
@@ -678,10 +708,10 @@ impl App {
         }else{
             match self.dashboard_selected {
                 0 => self.scroll_up(), // Show CA
-                1 => {  // New Cert (Previous Field)
+                1 | 2 => {  // New Cert (Previous Field) | Import Cert
                     self.dashboard_content_cursor = self.dashboard_content_cursor.saturating_sub(1);
                 },
-                2 | 3 => {}, //pass
+                3 => {}, //pass
                 _ => { // Certs
                     self.scroll_up()
                 },
@@ -706,7 +736,12 @@ impl App {
                         self.dashboard_content_cursor += 1;
                     }
                 },
-                2 | 3 => {}, //pass
+                2 => { // Import Cert
+                    if self.dashboard_content_cursor < 2 {
+                        self.dashboard_content_cursor += 1;
+                    }
+                },
+                3 => {}, //pass
                 _ => { // Certs
                     self.scroll_down()
                 },
@@ -771,10 +806,19 @@ impl App {
                         }
                         _ => {
                             self.dashboard_down();
-                        } //pass
+                        }
                     }
-
-
+                },
+                2 => { // Import Cert
+                    match self.dashboard_content_cursor {
+                        2 => { // New Cert (Create)
+                            self.password_intent = PasswordIntent::ImportCert   ;
+                            self.state = AppState::PasswordPrompt;
+                        }
+                        _ => {
+                            self.dashboard_down();
+                        }
+                    }
                 }
                 _ => {} //pass
             }
@@ -819,7 +863,21 @@ impl App {
                         }
                     }
                 }, 
-                2 | 3 => {}, // Static
+                2 => { // Import Cert
+                    let field = match self.dashboard_content_cursor {
+                        0 => &mut self.dashboard_newcert_pem_path,
+                        1 => &mut self.dashboard_newcert_key_path,
+                        _ => return, // Not an input field
+                    };
+                    match self.dashboard_content_cursor {
+                        _ => { //Other
+                            if field.len() < 255 && (c.is_ascii_alphanumeric() || vec!['.', '\\', '/', '$', '(', ')', '[', ']', '~', '_', '-'].contains(&c)){
+                                field.push(c);
+                            }
+                        }
+                    }
+                },
+                3 => {}, // Static
                 0 => { // CA Info
                     if vec!['e', 'E'].contains(&c){ // Export
                         self.switch_to_export();
@@ -849,8 +907,16 @@ impl App {
                         _ => return, // Not an input field
                     };
                     field.pop();
-                }, 
-                0 | 2 | 3 => {}, // pass static
+                },
+                2 => { // Import Cert
+                    let field = match self.dashboard_content_cursor {
+                        0 => &mut self.dashboard_newcert_pem_path,
+                        1 => &mut self.dashboard_newcert_key_path,
+                        _ => return, // Not an input field
+                    };
+                    field.pop();
+                },
+                0 | 3 => {}, // pass static
                 _ => { // Cert
                     self.password_intent =PasswordIntent::DeleteCert;
                     self.state = AppState::PasswordPrompt;
@@ -885,6 +951,21 @@ impl App {
         return encrypt_to_file(&self.current_realm.clone().unwrap().name.clone(), &self.password_text, self.current_realm.as_ref().unwrap(), true);
     }
 
+    pub fn dashboard_import_cert(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        //BACKEND
+        // Import cert and override the vault
+
+        let pem_content = read_file(&self.dashboard_newcert_pem_path)?;
+
+        let mut key_content: String = String::from("");
+        if !self.dashboard_newcert_key_path.is_empty(){
+            key_content = read_file(&self.dashboard_newcert_key_path)?;
+        }
+
+        self.current_realm.as_mut().expect("Error: Realm is empty").import_cert(pem_content, key_content)?;
+        return encrypt_to_file(&self.current_realm.clone().unwrap().name.clone(), &self.password_text, self.current_realm.as_ref().unwrap(), true);
+    }
+
     pub fn dashboard_remove_cert(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         //BACKEND
         // Remove the cert and override the vault
@@ -903,6 +984,11 @@ impl App {
         self.dashboard_newcert_type = 0; // Reset to Server
         self.dashboard_newcert_keysize = 2; // Reset to 4096
         self.dashboard_content_cursor = 0;
+    }
+
+    pub fn reset_form_import_cert(&mut self){
+        self.dashboard_newcert_pem_path.clear();
+        self.dashboard_newcert_key_path.clear();
     }
 
     // Export
@@ -947,7 +1033,7 @@ impl App {
     pub fn exportcert_input_char(&mut self, c: char){
         match self.dashboard_content_cursor {
             0 => { // path input field
-                if self.export_cert_path.len() < 255 && (c.is_ascii_alphanumeric() || vec!['.', '\\', '/', '$', '(', ')', '~'].contains(&c)){
+                if self.export_cert_path.len() < 255 && (c.is_ascii_alphanumeric() || vec!['.', '\\', '/', '$', '(', ')', '[', ']', '~', '_', '-'].contains(&c)){
                     self.export_cert_path.push(c);
                 }
             },

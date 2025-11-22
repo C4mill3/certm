@@ -69,7 +69,7 @@ impl Widget for ScrollableParagraph {
 // Custom widget to render a Form for creating a new cert
 pub struct NewCertForm {
     is_on_content: bool,
-    cursor: usize, // Common Name: 0 / SAN (DNS): 1 / SAN IP (Optional): 2 / Certificat Type: 3/ Certificate Keysize: 4
+    cursor: usize, // Common Name: 0 / SAN (DNS): 1 / SAN IP (Optional): 2 / Valid Until: 3/ Certificat Type: 4/ Certificate Keysize: 5 / Create: 6
     newcert_type: usize,
     newcert_keysize: usize,
     newcert_cn: String,
@@ -90,7 +90,7 @@ impl WidgetRef for NewCertForm {
         let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(11), // Forms Area
+            Constraint::Length(12), // Forms Area
             Constraint::Length(1), // Buttons
         ]).split(area);
         
@@ -99,7 +99,7 @@ impl WidgetRef for NewCertForm {
 
         let available_width =  forms_area.width as usize;
 
-        // Common Name: 0 / SAN (DNS): 1 / SAN IP (Optional): 2 / Certificat Type: 3/ Certificate Keysize: 4
+        // Common Name: 0 / SAN (DNS): 1 / SAN IP (Optional): 2 / Valid Until: 3/ Certificat Type: 4/ Certificate Keysize: 5 / Create: 6
 
         let common_name_full = if self.cursor == 0 && self.is_on_content { self.newcert_cn.clone() + "_" } else { self.newcert_cn.clone() };
         let altdns_full = if self.cursor == 1 && self.is_on_content { self.newcert_altdns.clone() + "_" } else { self.newcert_altdns.clone() };
@@ -128,6 +128,7 @@ impl WidgetRef for NewCertForm {
                 if self.cursor == 5 && self.newcert_keysize > 0 { "←" } else { " " },
                 key_sizes[self.newcert_keysize],
                 if self.cursor == 5 && self.newcert_keysize < key_sizes.len().saturating_sub(1) { "→" } else { " " })).style(if self.cursor == 5 { Style::default().add_modifier(Modifier::BOLD) } else { Style::default() }),
+            Line::from(""),
         ];
         let forms_paragraph = Paragraph::new(forms_lines).wrap(Wrap { trim: true });
         forms_paragraph.render(forms_area, buf);
@@ -144,6 +145,67 @@ impl WidgetRef for NewCertForm {
 
 /// Only needed for backwards compatibility
 impl Widget for NewCertForm {
+    fn render(self, area: Rect, buf: &mut Buffer) {
+        self.render_ref(area, buf);
+    }
+}
+
+//////////////////////////////
+
+// Custom widget to render a Form for creating a new cert
+pub struct ImportCertForm {
+    is_on_content: bool,
+    cursor: usize, // Cert Pem Path: 0 / Cert Key Path: 1 / Import (button): 2
+    newcert_pem_path: String,
+    newcert_key_path: String,
+}
+
+impl ImportCertForm {
+    pub fn new(is_on_content: bool, cursor: usize, newcert_pem_path: &String, newcert_key_path: &String) -> Self {
+        Self{is_on_content, cursor, newcert_pem_path: newcert_pem_path.clone(),newcert_key_path: newcert_key_path.clone()}
+    }
+}
+
+impl WidgetRef for ImportCertForm {
+    fn render_ref(&self, area: Rect, buf: &mut Buffer) {
+        let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(4), // Forms Area
+            Constraint::Length(1), // Buttons
+        ]).split(area);
+        
+        let forms_area = chunks[0];
+        let buttons_area = chunks[1];
+
+        let available_width =  forms_area.width as usize;
+
+        // Cert Pem Path: 0 / Cert Key Path: 1 / Import (button): 2
+
+        let pem_path_full = if self.cursor == 0 && self.is_on_content { self.newcert_pem_path.clone() + "_" } else { self.newcert_pem_path.clone() };
+        let key_path_full = if self.cursor == 1 && self.is_on_content { self.newcert_key_path.clone() + "_" } else { self.newcert_key_path.clone() };
+
+        let forms_lines = vec![
+            Line::from(format_with_ellipsis("Cert Pem Path: ", &pem_path_full, available_width)).style(if self.cursor == 0 && self.is_on_content { Style::default().add_modifier(Modifier::BOLD) } else { Style::default() }),
+            Line::from(""),
+            Line::from(format_with_ellipsis("Cert Key Path (Optional): ", &key_path_full, available_width)).style(if self.cursor == 1 && self.is_on_content { Style::default().add_modifier(Modifier::BOLD) } else { Style::default() }),
+            Line::from(""),
+            ];
+        let forms_paragraph = Paragraph::new(forms_lines).wrap(Wrap { trim: true });
+        forms_paragraph.render(forms_area, buf);
+
+//        // Buttons
+
+        let create_text = if self.cursor == 2 { "[Import]" } else { " Import " };
+        let create_paragraph = Paragraph::new(create_text)
+            .alignment(Alignment::Center)
+            .style(if self.cursor == 2 { Style::default().add_modifier(Modifier::BOLD) } else { Style::default() });
+        create_paragraph.render(buttons_area, buf);
+    }
+}
+
+/// Only needed for backwards compatibility
+impl Widget for ImportCertForm {
     fn render(self, area: Rect, buf: &mut Buffer) {
         self.render_ref(area, buf);
     }

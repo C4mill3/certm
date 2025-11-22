@@ -51,11 +51,11 @@ impl Cert {
     }
 
     // Export the public key in PEM format
-    pub fn get_public_txt(&self) -> Result<String, Box<dyn std::error::Error>> {
-        let public_key = self.get_public_key()?;
-        let public_key_pem = public_key.public_key_to_pem()?;
-        Ok(String::from_utf8(public_key_pem)?)
-    }
+    // pub fn get_public_txt(&self) -> Result<String, Box<dyn std::error::Error>> {
+    //     let public_key = self.get_public_key()?;
+    //     let public_key_pem = public_key.public_key_to_pem()?;
+    //     Ok(String::from_utf8(public_key_pem)?)
+    // }
 
     // Export the cert in PEM format
     pub fn get_cert_txt(&self) -> Result<String, Box<dyn std::error::Error>> {

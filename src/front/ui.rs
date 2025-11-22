@@ -34,7 +34,7 @@ pub fn ui_render(f: &mut Frame, app: &mut App) {
         AppState::PasswordPrompt => {
             match app.password_intent {
                 PasswordIntent::EnterRealm | PasswordIntent::DeleteRealm => {draw_select_realm(f, app, size, false)},
-                PasswordIntent::DeleteCert | PasswordIntent::CreateCert => {draw_dashboard(f, app, size, false)}
+                PasswordIntent::DeleteCert | PasswordIntent::CreateCert | PasswordIntent::ImportCert => {draw_dashboard(f, app, size, false)}
 
             }
             
@@ -126,6 +126,7 @@ fn draw_password_prompt(f: &mut Frame, app: &mut App, size: Rect) {
         PasswordIntent::EnterRealm => {format!("Enter in {}", app.realm_list[app.realm_selected].as_str())},
         PasswordIntent::DeleteRealm => {format!("Delete Realm {}", app.realm_list[app.realm_selected].as_str())},
         PasswordIntent::CreateCert => {"Generate New Cert".to_string()},
+        PasswordIntent::ImportCert => {"Import Cert".to_string()},
         PasswordIntent::DeleteCert => {"Delete Cert".to_string()},
     };
     let block = Block::default()
@@ -439,9 +440,7 @@ fn generate_dashboard_content(app: &mut App, inner_area: &Rect) ->  Box<dyn Widg
             return Box::new(mywidgets::NewCertForm::new(app.dashboard_on_content, app.dashboard_content_cursor, app.dashboard_newcert_type, app.dashboard_newcert_keysize, &app.dashboard_newcert_cn, &app.dashboard_newcert_altdns, &app.dashboard_newcert_altip, &app.dashboard_newcert_validuntil));
         },
         2 => {
-            return Box::new(Paragraph::new("WIP2")
-                .block(Block::default().borders(Borders::NONE))
-                .alignment(Alignment::Center));
+            return Box::new(mywidgets::ImportCertForm::new(app.dashboard_on_content, app.dashboard_content_cursor, &app.dashboard_newcert_pem_path, &app.dashboard_newcert_key_path));
         },
         3 => {
             return Box::new(Paragraph::new("WIP3")
