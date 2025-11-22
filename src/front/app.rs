@@ -11,7 +11,7 @@ use std::{io};
 
 // Backend
 use crate::tools;
-use tools::utility::{get_working_directory, path_exist, resolve_path, write_to_file};
+use tools::utility::{get_working_directory, path_exist, resolve_path, write_to_file, read_file};
 use tools::certs_manager::{Realm, Cert, KeySize, CertType};
 use tools::mycrypt::{encrypt_to_file, decrypt_from_file, delete_encrypted_file};
 
@@ -21,6 +21,7 @@ pub enum AppState {
     SelectRealm,
     PasswordPrompt,
     NewRealmForm,
+    NewRealmFromCA,
     Dashboard,
     ExportCert,
 }
@@ -71,6 +72,9 @@ pub struct App {
     pub nrf_ca_country: String,
     pub nrf_valid_until: String,
     pub nrf_ca_key_size_index: usize, // 0: 1024, 1: 2048, 2: 4096
+    
+    pub nrf_ca_pem_path: String,
+    pub nrf_ca_key_path: String,
 
     pub export_cert_path: String,
     pub export_cert_private: bool,
@@ -124,6 +128,9 @@ impl App {
             nrf_valid_until: String::new(),
             nrf_ca_key_size_index: 2, // Default to 4096
 
+            nrf_ca_pem_path: String::new(),
+            nrf_ca_key_path: String::new(),
+
             export_cert_path: String::new(),
             export_cert_private: false,
             
@@ -174,6 +181,9 @@ impl App {
                             KeyCode::Char('n') | KeyCode::Char('N') => {
                                 self.state = AppState::NewRealmForm;
                             },
+                            KeyCode::Char('i') | KeyCode::Char('I') => {
+                                self.state = AppState::NewRealmFromCA;
+                            },
                             KeyCode::Char('d') | KeyCode::Char('D') | KeyCode::Delete | KeyCode::Backspace => self.realm_delete_action() ,
                             KeyCode::Esc => {running = false},
                             _ => {}
@@ -202,7 +212,16 @@ impl App {
                                     self.nrf_change_key_size(true); // Increase key size
                                 }
                             }
-                            KeyCode::Enter => self.nrf_activate_field(),
+                            KeyCode::Enter => self.nrf_enter_field(),
+                            KeyCode::Backspace | KeyCode::Delete => self.nrf_backspace(),
+                            KeyCode::Esc => self.back_to_select_realm(),
+                            KeyCode::Char(c) => self.nrf_input_char(c),
+                            _ => {}
+                        },
+                        AppState::NewRealmFromCA => match key.code {
+                            KeyCode::Up => self.nrf_previous_field(),
+                            KeyCode::Down => self.nrf_next_field(),
+                            KeyCode::Enter => self.nrf_enter_field(),
                             KeyCode::Backspace | KeyCode::Delete => self.nrf_backspace(),
                             KeyCode::Esc => self.back_to_select_realm(),
                             KeyCode::Char(c) => self.nrf_input_char(c),
@@ -444,8 +463,18 @@ impl App {
     
     // New Realm Form
     pub fn nrf_next_field(&mut self) {
-        if self.nrf_cursor < 8 {
-            self.nrf_cursor += 1;
+        match self.state {
+            AppState::NewRealmForm => {
+                if self.nrf_cursor < 8 {
+                    self.nrf_cursor += 1;
+                }
+            },
+            AppState::NewRealmFromCA => {
+                if self.nrf_cursor < 5 {
+                    self.nrf_cursor += 1;
+                }
+            },
+            _ => {} //pass
         }
     }
 
@@ -453,73 +482,135 @@ impl App {
         self.nrf_cursor = self.nrf_cursor.saturating_sub(1);
     }
 
-    pub fn nrf_activate_field(&mut self) {
+    pub fn nrf_enter_field(&mut self) {
         // Activate button and maybe other
-        match self.nrf_cursor {
-            7 => {
-                // Create realm (placeholder - implement based on your backend)
-                match self.nrf_create_realm() {
-                    Ok(_) => {
-                        self.realm_list = Realm::list().unwrap(); // Refresh list
-                        self.state = AppState::SelectRealm;
+        match self.state {
+            AppState::NewRealmForm => {
+                match self.nrf_cursor {
+                    7 => {
+                        // Create realm (placeholder - implement based on your backend)
+                        match self.nrf_create_realm() {
+                            Ok(_) => {
+                                self.realm_list = Realm::list().unwrap(); // Refresh list
+                                self.state = AppState::SelectRealm;
+                                self.nrf_clear_form();
+                            },
+                            Err(e) => {
+                                self.switch_to_error(e.to_string(), AppState::NewRealmForm);
+                            },
+                        }
+                    }
+                    8 => { // Cancel
                         self.nrf_clear_form();
-                    },
-                    Err(e) => {
-                        self.switch_to_error(e.to_string(), AppState::NewRealmForm);
-                    },
+                        self.back_to_select_realm();
+                    }
+                    _ => {
+                        self.nrf_next_field()
+                    }
                 }
-            }
-            8 => { // Cancel
-                self.nrf_clear_form();
-                self.back_to_select_realm();
-            }
-            _ => {
-                self.nrf_next_field()
-            }
+            },
+            AppState::NewRealmFromCA => {
+                match self.nrf_cursor {
+                    4 => {
+                        // Create realm (placeholder - implement based on your backend)
+                        match self.nrf_create_realm_from_ca() {
+                            Ok(_) => {
+                                self.realm_list = Realm::list().unwrap(); // Refresh list
+                                self.state = AppState::SelectRealm;
+                                self.nrf_clear_form();
+                            },
+                            Err(e) => {
+                                self.switch_to_error(e.to_string(), AppState::NewRealmFromCA);
+                            },
+                        }
+                    }
+                    5 => { // Cancel
+                        self.nrf_clear_form();
+                        self.back_to_select_realm();
+                    }
+                    _ => {
+                        self.nrf_next_field()
+                    }
+                }
+            },
+            _ => {}
         }
     }
 
     pub fn nrf_input_char(&mut self, c: char) {
-        let field = match self.nrf_cursor {
-            0 => &mut self.nrf_name,
-            1 => &mut self.nrf_password,
-            2 => &mut self.nrf_ca_common_name,
-            3 => &mut self.nrf_ca_organization,
-            4 => &mut self.nrf_ca_country,
-            5 => &mut self.nrf_valid_until,
-            _ => return, // Not an input field
-        };
-        
-        match self.nrf_cursor {
-            4 => { // COUNTRY have to be == 2CHAR
-                if field.len() < 2 && c.is_alphabetic() {
-                    field.push(c.to_ascii_uppercase());
-                }
+        match self.state {
+            AppState::NewRealmForm => {
+                let field = match self.nrf_cursor {
+                    0 => &mut self.nrf_name,
+                    1 => &mut self.nrf_password,
+                    2 => &mut self.nrf_ca_common_name,
+                    3 => &mut self.nrf_ca_organization,
+                    4 => &mut self.nrf_ca_country,
+                    5 => &mut self.nrf_valid_until,
+                    _ => return, // Not an input field
+                };
+                
+                match self.nrf_cursor {
+                    4 => { // COUNTRY have to be == 2CHAR
+                        if field.len() < 2 && c.is_alphabetic() {
+                            field.push(c.to_ascii_uppercase());
+                        }
+                    },
+                    5 => { // Date, limited to 8
+                        if field.len() < 8 && c.is_ascii_digit(){
+                            field.push(c);
+                        }
+                    },
+                    _ => { // Other, limited to 255
+                        if field.len() < 255 && (c.is_ascii_alphanumeric() || vec!['!', '@', '#', '$', '%', '&', '*', '(', ')', '-', '=', '+', ' ', '.'].contains(&c)) {
+                            field.push(c);
+                        }
+                    },
+                };
             },
-            5 => { // Date, limited to 8
-                if field.len() < 8 && c.is_ascii_digit(){
+            AppState::NewRealmFromCA => {
+                let field = match self.nrf_cursor {
+                    0 => &mut self.nrf_name,
+                    1 => &mut self.nrf_password,
+                    2 => &mut self.nrf_ca_pem_path,
+                    3 => &mut self.nrf_ca_key_path,
+                    _ => return, // Not an input field
+                };
+                
+                if field.len() < 255 && (c.is_ascii_alphanumeric() || vec!['.', '\\', '/', '$', '(', ')', '~'].contains(&c)){
                     field.push(c);
                 }
             },
-            _ => { // Other, limited to 255
-                if field.len() < 255 && (c.is_ascii_alphanumeric() || vec!['!', '@', '#', '$', '%', '&', '*', '(', ')', '-', '=', '+', ' ', '.'].contains(&c)) {
-                    field.push(c);
-                }
-            },
-        };
+            _ => {} //pass
+        }
     }
 
     pub fn nrf_backspace(&mut self) {
-        let field = match self.nrf_cursor {
-            0 => &mut self.nrf_name,
-            1 => &mut self.nrf_password,
-            2 => &mut self.nrf_ca_common_name,
-            3 => &mut self.nrf_ca_organization,
-            4 => &mut self.nrf_ca_country,
-            5 => &mut self.nrf_valid_until,
-            _ => return, // Not an input field
-        };
-        field.pop();
+        match self.state {
+            AppState::NewRealmForm => {
+                let field = match self.nrf_cursor {
+                    0 => &mut self.nrf_name,
+                    1 => &mut self.nrf_password,
+                    2 => &mut self.nrf_ca_common_name,
+                    3 => &mut self.nrf_ca_organization,
+                    4 => &mut self.nrf_ca_country,
+                    5 => &mut self.nrf_valid_until,
+                    _ => return, // Not an input field
+                };
+                field.pop();
+            },
+            AppState::NewRealmFromCA => {
+                let field = match self.nrf_cursor {
+                    0 => &mut self.nrf_name,
+                    1 => &mut self.nrf_password,
+                    2 => &mut self.nrf_ca_pem_path,
+                    3 => &mut self.nrf_ca_key_path,
+                    _ => return, // Not an input field
+                };
+                field.pop();
+            },
+            _ => {} //pass
+        }
     }
 
     pub fn nrf_change_key_size(&mut self, increase: bool) {
@@ -536,6 +627,8 @@ impl App {
         self.nrf_ca_common_name.clear();
         self.nrf_ca_organization.clear();
         self.nrf_ca_country.clear();
+        self.nrf_ca_pem_path.clear();
+        self.nrf_ca_key_path.clear();
         self.nrf_ca_key_size_index = 2; // Reset to 4096
         self.nrf_cursor = 0;
     }
@@ -548,6 +641,28 @@ impl App {
         let formatted_time = format_date(&self.nrf_valid_until)?;
         
         let new_realm= Realm::new(&self.nrf_name, key_size, &self.nrf_ca_common_name, &self.nrf_ca_organization, &self.nrf_ca_country, &formatted_time)?;
+        
+        return encrypt_to_file(&self.nrf_name, &self.nrf_password, &new_realm, false);
+    }
+
+    pub fn nrf_create_realm_from_ca(&self) -> Result<(), Box<dyn std::error::Error>> {
+        //BACKEND
+        // Create the realm using settings, then create the vault if not already existing
+        let pem: String = match read_file(&self.nrf_ca_pem_path){
+            Ok(s) => s,
+            Err(e) => {
+                return Err(Box::from(format!("Error while importing ca pem: {}", e)));
+            }
+        };
+
+        let key: String = match read_file(&self.nrf_ca_key_path){
+            Ok(s) => s,
+            Err(e) => {
+                return Err(Box::from(format!("Error while importing ca key: {}", e)));
+            }
+        };
+        
+        let new_realm= Realm::new_from_ca(&self.nrf_name.as_ref(), pem, key)?;
         
         return encrypt_to_file(&self.nrf_name, &self.nrf_password, &new_realm, false);
     }
@@ -654,7 +769,9 @@ impl App {
                             self.password_intent = PasswordIntent::CreateCert;
                             self.state = AppState::PasswordPrompt;
                         }
-                        _ => {} //pass
+                        _ => {
+                            self.dashboard_down();
+                        } //pass
                     }
 
 
@@ -803,7 +920,7 @@ impl App {
 
     pub fn exportcert_enter(&mut self){
         match self.dashboard_content_cursor {
-            0 => {}, //pass
+            0 => {self.dashboard_content_cursor +=1}, //pass
             1 => {self.export_cert_private = !self.export_cert_private},
             2 => { // Button Export
                 match self.exportcert_action(){

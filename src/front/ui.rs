@@ -44,6 +44,10 @@ pub fn ui_render(f: &mut Frame, app: &mut App) {
             draw_select_realm(f, app, size, false);
             draw_new_realm_form(f, app, size);
         }
+        AppState::NewRealmFromCA => {
+            draw_select_realm(f, app, size, false);
+            draw_new_realm_from_ca(f, app, size);
+        }
         AppState::Dashboard => draw_dashboard(f, app, size, true),
         AppState::ExportCert => {
             draw_dashboard(f, app, size, false);
@@ -83,6 +87,7 @@ fn draw_select_realm(f: &mut Frame, app: &mut App, size: Rect, tips : bool) {
         block = block.title_bottom(Line::from(vec!["↑↓".red(), DOT.into(),
             "Select".into(), "↵".red(), DOT.into(),
             "N".red(), "ew".into(), DOT.into(),
+            "I".red(), "mport".into(), DOT.into(),
             "D".red(), "elete".into(), DOT.into(),
             "Esc".red(),]).right_aligned());
     }
@@ -147,7 +152,8 @@ fn draw_new_realm_form(f: &mut Frame, app: &mut App, size: Rect) {
     let block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .title("New Realm");
+        .title("New Realm")
+        .title_bottom(Line::from(vec!["↑↓".red(), DOT.into(), "Select".into(), "↵".red(), DOT.into(), "Esc".red(),]).right_aligned());
     f.render_widget(Clear, area);
     f.render_widget(&block, area);
 
@@ -201,7 +207,7 @@ fn draw_new_realm_form(f: &mut Frame, app: &mut App, size: Rect) {
 
     let key_sizes = [1024, 2048, 4096];
     let ca_lines = vec![
-         Line::from(format_with_ellipsis("Common Name: ", &common_name_full, available_width)).style(if app.nrf_cursor == 2 { Style::default().add_modifier(Modifier::BOLD) } else { Style::default() }),
+        Line::from(format_with_ellipsis("Common Name: ", &common_name_full, available_width)).style(if app.nrf_cursor == 2 { Style::default().add_modifier(Modifier::BOLD) } else { Style::default() }),
         Line::from(""),
         Line::from(format_with_ellipsis("Organization: ", &organization_full, available_width)).style(if app.nrf_cursor == 3 { Style::default().add_modifier(Modifier::BOLD) } else { Style::default() }),
         Line::from(""),
@@ -233,6 +239,90 @@ fn draw_new_realm_form(f: &mut Frame, app: &mut App, size: Rect) {
     let cancel_paragraph     = Paragraph::new(cancel_text)
         .alignment(Alignment::Center)
         .style(if app.nrf_cursor == 8 { Style::default().add_modifier(Modifier::BOLD) } else { Style::default() });
+    f.render_widget(cancel_paragraph, button_chunks[1]);
+
+}
+
+fn draw_new_realm_from_ca(f: &mut Frame, app: &mut App, size: Rect) {
+    let area = popup_rect(50, 15, 70, 60, size); // Dynamic size: 60% width/height, min 50x20
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .title("New Realm From CA")
+        .title_bottom(Line::from(vec!["↑↓".red(), DOT.into(), "Select".into(), "↵".red(), DOT.into(), "Esc".red(),]).right_aligned());
+
+    f.render_widget(Clear, area);
+    f.render_widget(&block, area);
+
+    let inner_area = block.inner(area);
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(5), // Realm block
+            Constraint::Length(5), // CA block
+            Constraint::Length(2), // Buttons
+        ])
+        .split(inner_area);
+
+    // Realm block
+    let realm_block = Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .title("Realm");
+    let realm_inner = realm_block.inner(chunks[0]);
+    f.render_widget(realm_block, chunks[0]);
+
+    // Calculate available width for Realm fields
+    let available_width = realm_inner.width as usize;
+
+    let name_full = if app.nrf_cursor == 0 { app.nrf_name.clone() + "_" } else { app.nrf_name.clone() };
+    let password_full = if app.nrf_cursor == 1 { "*".repeat(app.nrf_password.len()) + "_" } else { "*".repeat(app.nrf_password.len()) };
+
+    let realm_lines = vec![
+        Line::from(format_with_ellipsis("Name: ", &name_full, available_width)).style(if app.nrf_cursor == 0 { Style::default().add_modifier(Modifier::BOLD) } else { Style::default() }),
+        Line::from(""),
+        Line::from(format_with_ellipsis("Password: ", &password_full, available_width)).style(if app.nrf_cursor == 1 { Style::default().add_modifier(Modifier::BOLD) } else { Style::default() }),
+    ];
+    let realm_paragraph = Paragraph::new(realm_lines).wrap(Wrap { trim: true });
+    f.render_widget(realm_paragraph, realm_inner);
+
+    // CA block
+    let ca_block = Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .title("CA");
+    let ca_inner = ca_block.inner(chunks[1]);
+    f.render_widget(ca_block, chunks[1]);
+
+
+    let pem_path_full = if app.nrf_cursor == 2 { app.nrf_ca_pem_path.clone() + "_" } else { app.nrf_ca_pem_path.clone() };
+    let key_path_full = if app.nrf_cursor == 3 { app.nrf_ca_key_path.clone() + "_" } else { app.nrf_ca_key_path.clone() };
+    
+
+    let ca_lines = vec![
+        Line::from(format_with_ellipsis("CA pem file path: ", &pem_path_full, available_width)).style(if app.nrf_cursor == 2 { Style::default().add_modifier(Modifier::BOLD) } else { Style::default() }),
+        Line::from(""),
+        Line::from(format_with_ellipsis("CA key file path: ", &key_path_full, available_width)).style(if app.nrf_cursor == 3 { Style::default().add_modifier(Modifier::BOLD) } else { Style::default() }),
+    ];
+    let ca_paragraph = Paragraph::new(ca_lines).wrap(Wrap { trim: true });
+    f.render_widget(ca_paragraph, ca_inner);
+
+    // Buttons
+    let button_chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+        .split(chunks[2]);
+
+    let create_text = if app.nrf_cursor == 4 { "[Create]" } else { " Create " };
+    let create_paragraph = Paragraph::new(create_text)
+        .alignment(Alignment::Center)
+        .style(if app.nrf_cursor == 4 { Style::default().add_modifier(Modifier::BOLD) } else { Style::default() });
+    f.render_widget(create_paragraph, button_chunks[0]);
+
+    let cancel_text = if app.nrf_cursor == 5 { "[Cancel]" } else { " Cancel " };
+    let cancel_paragraph     = Paragraph::new(cancel_text)
+        .alignment(Alignment::Center)
+        .style(if app.nrf_cursor == 5 { Style::default().add_modifier(Modifier::BOLD) } else { Style::default() });
     f.render_widget(cancel_paragraph, button_chunks[1]);
 
 }
@@ -370,7 +460,8 @@ fn generate_dashboard_content(app: &mut App, inner_area: &Rect) ->  Box<dyn Widg
 
 fn generate_dashboard_tips(dashboard_selected: usize, on_content: bool) -> Vec<Span<'static>> {
     // dynamically write the tips for the dashboard AppState
-    let mut tips: Vec<Span<'_>> = vec!["↑↓".red(), DOT.into(),
+    let mut tips: Vec<Span<'_>> = vec![
+            "↑↓".red(), DOT.into(),
             "Select".into(), "↵".red(), DOT.into(),
             "Esc".red(),];
     match dashboard_selected {

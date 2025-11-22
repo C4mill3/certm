@@ -3,7 +3,8 @@ name = "certm"
 version = "0.1.0"
 authors = ["C4mill3"]
 edition = "2024"    
-description = "This is a tui for managing x509 certificate using openssl and ratatui"
+description = "This is a tui for managing x509 certificate using openssl and ratatui."
+repository = "https://github.com/C4mill3/certm"
 license = "GPL-3.0-only"
 
 

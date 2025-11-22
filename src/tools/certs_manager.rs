@@ -126,7 +126,7 @@ impl Realm {
         return Ok(resp);
     }
 
-    pub fn new_from_ca(name: &'static str, ca_cert: String, ca_private_key: String) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn new_from_ca(name: &str, ca_cert: String, ca_private_key: String) -> Result<Self, Box<dyn std::error::Error>> {
         // Parse the CA certificate
         let ca_x509 = X509::from_pem(ca_cert.as_bytes()).map_err(|e| e.to_string())?;
 

@@ -60,6 +60,14 @@ pub fn path_exist(path: &Path) -> Result<bool, io::Error> {
     }
 }
 
+pub fn read_file(filepath: &str) -> Result<String, Box<dyn std::error::Error>> {
+    if ! path_exist(&resolve_path(filepath)?)?{
+        return Err(Box::from(format!("Path {} does not exist", filepath)));
+    }
+    return Ok(fs::read_to_string(filepath)?);
+}
+
+
 pub fn sanitize_name(filename: &str) -> String {
     // Remove any characters that are not alphanumeric or _ -
     let safe_name: String = filename
