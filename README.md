@@ -2,6 +2,14 @@
 
 This is a tui for managing x509 certificate using openssl and ratatui
 
+# Demo
+
+
+
+# Using it
+
+## Prerequisites
+`sudo apt-get install libssl-dev pkg-config`
 
 ## Install
 

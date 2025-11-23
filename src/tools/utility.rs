@@ -5,7 +5,7 @@ use std::os::unix::fs::PermissionsExt; // For Unix only
 use std::io::Write;
 use shellexpand;
 
-pub const CA_VAULT : &'static str = "~/.ca_vault/";
+pub const CA_VAULT : &'static str = "~/.certm_vault/";
 
 
 pub enum FSItemType {

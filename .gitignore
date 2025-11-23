@@ -1,7 +1,2 @@
-target/
-tailwindcss/tailwindcss
-datas/*
-
 # Added by cargo
-
 /target
