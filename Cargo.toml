@@ -1,6 +1,6 @@
 [package]
 name = "certm"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["C4mill3"]
 edition = "2024"    
 description = "This is a tui for managing x509 certificate using openssl and ratatui."

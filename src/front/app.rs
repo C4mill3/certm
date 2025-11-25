@@ -363,15 +363,25 @@ impl App {
             },
             PasswordIntent::DeleteRealm => {
                 let realm_name = &self.realm_list[self.realm_selected];
-                match delete_encrypted_file(realm_name) {
+                let filename = &self.realm_list[self.realm_selected];
+                let realm_decode = decrypt_from_file(&filename, &self.password_text);
+                match realm_decode { // Done to check password
                     Ok(_) => {
-                        self.realm_selected = self.realm_selected.saturating_sub(1);
-                        self.back_to_select_realm();
+                        match delete_encrypted_file(realm_name) {
+                            Ok(_) => {
+                                self.realm_selected = self.realm_selected.saturating_sub(1);
+                                self.back_to_select_realm();
+                            },
+                            Err(e) => {
+                                self.switch_to_error(e.to_string(), AppState::PasswordPrompt);
+                            },
+                        };
                     },
+
                     Err(e) => {
                         self.switch_to_error(e.to_string(), AppState::PasswordPrompt);
                     },
-                };
+                }
             },
             PasswordIntent::CreateCert => {
                 // Checking file password match

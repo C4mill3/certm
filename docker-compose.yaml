@@ -1,6 +1,0 @@
-services:
-  debian-server:
-    build: .
-    container_name: certM
-    expose:
-      - 8087

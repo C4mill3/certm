@@ -514,7 +514,7 @@ fn draw_export_cert(f: &mut Frame, app: &mut App, size: Rect) {
         Line::from(""),
         Line::from(format!("Export Private Key: {}", export_private_full)).style(if app.dashboard_content_cursor == 1 { Style::default().add_modifier(Modifier::BOLD) } else { Style::default() }),
         Line::from(""),
-        Line::from(export_button_full).alignment(Alignment::Center),
+        Line::from(export_button_full).style(if app.dashboard_content_cursor == 2 { Style::default().add_modifier(Modifier::BOLD) } else { Style::default() }).alignment(Alignment::Center),
     ];
     let paragraph = Paragraph::new(text).wrap(Wrap { trim: true });
     f.render_widget(paragraph, inner_area);
