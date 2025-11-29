@@ -1,6 +1,6 @@
 use openssl::rsa::{Rsa, Padding};
 use openssl::pkey::{PKey, Private, Public};
-use openssl::x509::{X509Builder, X509Extension, X509NameBuilder, X509};
+use openssl::x509::{X509, X509Builder, X509Extension, X509NameBuilder};
 use openssl::asn1::{Asn1Time, Asn1Object, Asn1OctetString};
 use openssl::sha::sha1;
 use std::net::IpAddr;
@@ -182,11 +182,6 @@ impl Realm {
         Ok(())
     }
 
-    //pub fn add_cert_using_csr(csr : String) -> Result<(), Box<dyn std::error::Error>> {
-    //Not implemented yet
-    //    Ok(())
-    //}
-
     pub fn import_cert(&mut self, cert: String, private_key: String) -> Result<(), Box<dyn std::error::Error>> {
         // add a cert to a realm, only cert is mandatory,
         // private_key can be empty
@@ -195,25 +190,11 @@ impl Realm {
         // Parse the CA certificate
         let cert_x509 = X509::from_pem(cert.as_bytes()).map_err(|e| e.to_string())?;
 
-        fn is_extension_in_cert(cert_der : &Vec<u8>, extension: &Vec<u8>) -> bool {
-            if extension.len() > cert_der.len() {
-                return false; // previously Err(Box::from("To little to even be a certificate"));
-            }
-
-            // Iterate through big_tab and check for a match
-            let mut found_extension = false;
-            for i in 0..=cert_der.len() - extension.len() {
-                if &cert_der[i..i + extension.len()] == extension {
-                    found_extension = true;
-                }
-            }
-            return  found_extension;
-        }
         // Check if the CA attribute is false
         let cafalse_extension: Vec<u8> = create_extension(&"2.5.29.19", &[0x30, 0x00], true)?.to_der()?; // X509v3 Basic Constraints (critical): CA:False
         let ca_der: Vec<u8> = cert_x509.to_der()?;
         
-        if ! is_extension_in_cert(&ca_der, &cafalse_extension){
+        if ! is_extension_in_pem(&ca_der, &cafalse_extension){
             return Err(Box::from("Cert is missing the Basic Constaint CA:False"));
         }
         
@@ -223,12 +204,12 @@ impl Realm {
         let extended_client_server_extension = create_extension(&"2.5.29.37",&[0x30, 0x14, 0x06, 0x08, 0x2B, 0x06, 0x01, 0x05, 0x05, 0x07, 0x03, 0x02, 0x06, 0x08, 0x2B, 0x06, 0x01, 0x05, 0x05, 0x07, 0x03, 0x01], false)?.to_der()?; // Both TLS Web Client/Server Authentication 
         
         let cert_type: CertType = {
-            if is_extension_in_cert(&ca_der, &extended_server_extension){
+            if is_extension_in_pem(&ca_der, &extended_server_extension){
                 CertType::Server
-            }else if is_extension_in_cert(&ca_der, &extended_client_extension) {
+            }else if is_extension_in_pem(&ca_der, &extended_client_extension) {
                 CertType::Client
-            }else if is_extension_in_cert(&ca_der, &extended_client_server_extension) ||
-                    is_extension_in_cert(&ca_der, &extended_server_client_extension) {
+            }else if is_extension_in_pem(&ca_der, &extended_client_server_extension) ||
+                    is_extension_in_pem(&ca_der, &extended_server_client_extension) {
                 CertType::ServerAndClient
             }
             else {
@@ -612,6 +593,21 @@ fn rsa_keys_match(private_key_pem: &[u8], public_key_pem: &[u8]) -> Result<bool,
     // Check if the decrypted message matches the original
     Ok(&decrypted[..decrypted_len] == test_message)
 }
+
+fn is_extension_in_pem(cert_der : &Vec<u8>, extension: &Vec<u8>) -> bool {
+            if extension.len() > cert_der.len() {
+                return false; // previously Err(Box::from("To little to even be a certificate"));
+            }
+
+            // Iterate through big_tab and check for a match
+            let mut found_extension = false;
+            for i in 0..=cert_der.len() - extension.len() {
+                if &cert_der[i..i + extension.len()] == extension {
+                    found_extension = true;
+                }
+            }
+            return  found_extension;
+        }
 
 //fn main() -> Result<(), Box<dyn std::error::Error>> {
 //    

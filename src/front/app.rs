@@ -95,7 +95,6 @@ impl App {
             "CA Info".to_string(),
             "Create Cert".to_string(),
             "Import Cert".to_string(),
-            "Sign a CSR".to_string(),
         ];
 
         Self {
@@ -334,7 +333,8 @@ impl App {
     pub fn password_escape(&mut self){
         match self.password_intent {
             PasswordIntent::EnterRealm | PasswordIntent::DeleteRealm => {self.back_to_select_realm()},
-            PasswordIntent::DeleteCert | PasswordIntent::CreateCert | PasswordIntent::ImportCert => {
+            PasswordIntent::DeleteCert | PasswordIntent::CreateCert |
+            PasswordIntent::ImportCert => {
                 self.password_text.clear();
                 self.state=AppState::Dashboard;
             }
@@ -721,7 +721,6 @@ impl App {
                 1 | 2 => {  // New Cert (Previous Field) | Import Cert
                     self.dashboard_content_cursor = self.dashboard_content_cursor.saturating_sub(1);
                 },
-                3 => {}, //pass
                 _ => { // Certs
                     self.scroll_up()
                 },
@@ -751,7 +750,6 @@ impl App {
                         self.dashboard_content_cursor += 1;
                     }
                 },
-                3 => {}, //pass
                 _ => { // Certs
                     self.scroll_down()
                 },
@@ -847,6 +845,11 @@ impl App {
     pub fn dashboard_input_char(&mut self, c: char) {
         if self.dashboard_on_content{
             match self.dashboard_selected {
+                0 => { // CA Info
+                    if vec!['e', 'E'].contains(&c){ // Export
+                        self.switch_to_export();
+                    }
+                },
                 1 => { // New cert
                     let field = match self.dashboard_content_cursor {
                         0 => &mut self.dashboard_newcert_cn,
@@ -887,12 +890,6 @@ impl App {
                         }
                     }
                 },
-                3 => {}, // Static
-                0 => { // CA Info
-                    if vec!['e', 'E'].contains(&c){ // Export
-                        self.switch_to_export();
-                    }
-                },
                 _ => { // Cert
                     if vec!['d', 'D'].contains(&c){ // Delete
                         self.password_intent =PasswordIntent::DeleteCert;
@@ -926,7 +923,7 @@ impl App {
                     };
                     field.pop();
                 },
-                0 | 3 => {}, // pass static
+                0 => {}, // pass static
                 _ => { // Cert
                     self.password_intent =PasswordIntent::DeleteCert;
                     self.state = AppState::PasswordPrompt;
@@ -1007,7 +1004,10 @@ impl App {
         self.state = AppState::ExportCert;
         self.dashboard_content_cursor = 0;
         match get_working_directory(){
-            Ok(path) => {self.export_cert_path = path;},
+            Ok(path) => { // this is reset
+                self.export_cert_path = path;
+                self.export_cert_private = false;
+            },
             Err(e) =>{
                 self.switch_to_error(e.to_string(), AppState::ExportCert);
             }

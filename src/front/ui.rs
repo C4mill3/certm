@@ -34,7 +34,8 @@ pub fn ui_render(f: &mut Frame, app: &mut App) {
         AppState::PasswordPrompt => {
             match app.password_intent {
                 PasswordIntent::EnterRealm | PasswordIntent::DeleteRealm => {draw_select_realm(f, app, size, false)},
-                PasswordIntent::DeleteCert | PasswordIntent::CreateCert | PasswordIntent::ImportCert => {draw_dashboard(f, app, size, false)}
+                PasswordIntent::DeleteCert | PasswordIntent::CreateCert |
+                PasswordIntent::ImportCert => {draw_dashboard(f, app, size, false)}
 
             }
             
@@ -141,7 +142,7 @@ fn draw_password_prompt(f: &mut Frame, app: &mut App, size: Rect) {
     let inner_area = block.inner(area);
     let text = vec![
         Line::from(""),
-        Line::from(format!("Password:{}", "*".repeat(app.password_text.len()))),
+        Line::from(format!("Realm Password:{}", "*".repeat(app.password_text.len()))),
         Line::from(""),
     ];
     let paragraph = Paragraph::new(text).wrap(Wrap { trim: true });
@@ -442,11 +443,6 @@ fn generate_dashboard_content(app: &mut App, inner_area: &Rect) ->  Box<dyn Widg
         2 => {
             return Box::new(mywidgets::ImportCertForm::new(app.dashboard_on_content, app.dashboard_content_cursor, &app.dashboard_newcert_pem_path, &app.dashboard_newcert_key_path));
         },
-        3 => {
-            return Box::new(Paragraph::new("WIP3")
-                .block(Block::default().borders(Borders::NONE))
-                .alignment(Alignment::Center));
-        },
         _ => { // x > 3 -> Cert
             let cert_id = app.get_selected_cert();
             let text = app.current_realm.as_ref().unwrap().certs[cert_id].get_info_txt().unwrap();
@@ -474,9 +470,6 @@ fn generate_dashboard_tips(dashboard_selected: usize, on_content: bool) -> Vec<S
             return tips;
         },
         2 => {
-            return tips;
-        },
-        3 => {
             return tips;
         },
         _ => { // x > 3 -> Cert
