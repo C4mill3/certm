@@ -8,7 +8,7 @@ readme = "README.md"
 repository = "https://github.com/C4mill3/certm"
 license = "GPL-3.0-only"
 categories = ["config"]
-keywords = ["x509", "certificate", "certificate-authority", "manager", "tui"]
+keywords = ["x509", "certificate", "ca", "manager", "tui"]
 rust-version = "1.91.0"
 
 
