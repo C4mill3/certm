@@ -7,7 +7,7 @@ use shellexpand;
 
 pub const CA_VAULT : &'static str = "~/.certm_vault/";
 
-
+#[allow(unused)]
 pub enum FSItemType {
     All,
     Files,

@@ -165,7 +165,7 @@ impl App {
                     }
                 }
             }else {
-                terminal.draw(|f| super::ui_render(f, self))?;
+                terminal.draw(|f| super::ui_render(f, self))?;  
                 
                 if let Event::Key(key) = event::read()? {
                     match self.state {
@@ -667,6 +667,7 @@ impl App {
         self.nrf_ca_common_name.clear();
         self.nrf_ca_organization.clear();
         self.nrf_ca_country.clear();
+        self.nrf_valid_until.clear();
         self.nrf_ca_pem_path.clear();
         self.nrf_ca_key_path.clear();
         self.nrf_ca_key_size_index = 2; // Reset to 4096

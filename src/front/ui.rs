@@ -279,7 +279,6 @@ fn draw_new_realm_from_ca(f: &mut Frame, app: &mut App, size: Rect) {
 
     let name_full = if app.nrf_cursor == 0 { app.nrf_name.clone() + "_" } else { app.nrf_name.clone() };
     let password_full = if app.nrf_cursor == 1 { "*".repeat(app.nrf_password.len()) + "_" } else { "*".repeat(app.nrf_password.len()) };
-
     let realm_lines = vec![
         Line::from(format_with_ellipsis("Name: ", &name_full, available_width)).style(if app.nrf_cursor == 0 { Style::default().add_modifier(Modifier::BOLD) } else { Style::default() }),
         Line::from(""),

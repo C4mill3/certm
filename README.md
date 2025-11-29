@@ -5,11 +5,11 @@ This is a tui for managing x509 certificate using openssl and ratatui
 
 
 # Demo
-
+![demo.gif](README/demo.gif)
 
 
 # Info
-By default, vault are stored in `"~/.ca_vault"`
+By default, vault are stored in `"~/.certm_vault"`
 
 # Using it
 
