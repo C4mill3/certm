@@ -602,7 +602,7 @@ impl App {
                         }
                     },
                     _ => { // Other, limited to 255
-                        if field.len() < 255 && (c.is_ascii_alphanumeric() || vec!['!', '@', '#', '$', '%', '&', '*', '(', ')', '-', '=', '+', ' ', '.'].contains(&c)) {
+                        if field.len() < 255 && (c.is_ascii_alphanumeric() || vec!['!', '@', '#', '$', '%', '&', '*', '(', ')', '-', '_', '=', '+', ' ', '.'].contains(&c)) {
                             field.push(c);
                         }
                     },
@@ -871,7 +871,7 @@ impl App {
                             }
                         },
                         _ => { //Other
-                            if field.len() < 255 && (c.is_ascii_alphanumeric() || vec!['.', ',', ' '].contains(&c)){
+                            if field.len() < 255 && (c.is_ascii_alphanumeric() || vec!['.', ',', ' ', '-', '_'].contains(&c)){
                                 field.push(c);
                             }
                         }
