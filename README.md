@@ -24,3 +24,11 @@ Simply use: `cargo install certm`
 
 To build use: `cargo build`
 To run use: `cargo run -r`
+
+
+## TODO
+* Autocomplete on file path
+* Autocomplete date
+* Autocomplete SANS
+* Better Cursor
+* Test (lazy)
